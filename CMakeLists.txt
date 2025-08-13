@@ -36,8 +36,8 @@ pico_sdk_init()
 # Add executable. Default name is the project name, version 0.1
 
 add_executable(sensor_hub
-        main.c
-        mcp23018.c
+        src/main.c
+        src/mcp23018.c
         )
 
 # pull in common dependencies and additional i2c hardware support

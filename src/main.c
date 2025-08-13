@@ -87,7 +87,7 @@ void bus_scan() {
 }
 
 int main() {
-    // Enable UART so we can print status output
+    // initialization
     stdio_init_all();
     gpio_init(INTERRUPT_PIN);
     gpio_set_dir(INTERRUPT_PIN, GPIO_IN);
@@ -110,7 +110,7 @@ int main() {
     // Make the I2C pins available to picotool
     bi_decl(bi_2pins_with_func(I2C_SDA_PIN, I2C_SCL_PIN, GPIO_FUNC_I2C));
 
-    sleep_ms(1000);  // Allow time for I2C to stabilize
+    sleep_ms(100);  // Allow time for I2C to stabilize
 
     puts("===========================\nQuick device check...");
     uint8_t test_byte;
@@ -139,7 +139,7 @@ int main() {
 
     mcp23018_iocon_t iocon = {
         .INTCC = 1,
-        .INTPOL = 0,  // Change to 0: INTA is active LOW (open-drain)
+        .INTPOL = 0,  // INTA is active LOW (open-drain)
         .reserved1 = 0,
         .reserved2 = 0,
         .reserved3 = 0,
@@ -225,17 +225,6 @@ int main() {
                 last_print_time = current_time;
             }
         }
-        
-        // // read gpio 7
-        // if (data & 0x80) {
-        //     // GPIO 7 is high
-        //     mcp23018_store8(GPIOA, 0x0); 
-        //     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-        // } else {
-        //     // GPIO 7 is low
-        //     mcp23018_store8(GPIOA, 0x1);
-        //     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-        // }
 
         // Print GPIO pin 2 status every 1000ms
         if (current_time - last_print_time >= 1000) {
@@ -243,16 +232,6 @@ int main() {
             printf("Pico GPIO pin 2 status: %s\n", pin2_state ? "HIGH" : "LOW");
             last_print_time = current_time;
         }
-
-        // if(!mcp23018_interrupt_pending && gpio_get(2)) {
-        //     uint8_t intcap;
-        //     // If no interrupt is pending and GPIO 2 is high, attempt to clear interrupt
-        //     if (mcp23018_read8(INTCAPA_BANK1, &intcap) == 1) {
-        //         printf("!!!!!! Interrupt capture on GPIOA: 0x%02x\n", intcap);
-        //     } else {
-        //         puts("Failed to read interrupt capture");
-        //     }
-        // }
         
         sleep_ms(50);
     }
