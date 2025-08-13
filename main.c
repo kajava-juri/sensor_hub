@@ -23,6 +23,7 @@
 #include "pico/stdlib.h"
 #include "pico/binary_info.h"
 #include "hardware/i2c.h"
+#include "hardware/gpio.h"
 #include "pico/cyw43_arch.h"
 #include "main.h"
 #include "mcp23018.h"
@@ -37,41 +38,25 @@
 #define IODIRA 0x00
 #define GPIOA 0x09
 
+static char event_str[128];
+volatile bool mcp23018_interrupt_pending = false;
+
+void gpio_event_string(char *buf, uint32_t events);
+
 // I2C reserves some addresses for special purposes. We exclude these from the scan.
 // These are any addresses of the form 000 0xxx or 111 1xxx
 bool reserved_addr(uint8_t addr) {
     return (addr & 0x78) == 0 || (addr & 0x78) == 0x78;
 }
 
-// int mcp23018_read8(uint8_t reg, uint8_t *data) {
-//     // Use the 7-bit address directly - Pico SDK handles R/W bit
-//     int res;
-    
-//     printf("DEBUG: Writing register 0x%02x to device 0x%02x\n", reg, EXPANDER_ADDR);
-//     res = i2c_write_blocking(i2c_default, EXPANDER_ADDR, &reg, 1, true);  // true = keep control
-//     printf("DEBUG: Write result: %d\n", res);
-//     if (res < 1) return res;
-
-//     sleep_us(50);
-
-//     printf("DEBUG: Reading from device 0x%02x, register 0x%02x\n", EXPANDER_ADDR, reg);
-//     res = i2c_read_blocking(i2c_default, EXPANDER_ADDR, data, 1, false);
-//     printf("DEBUG: Read result: %d, data: 0x%02x\n", res, *data);
-
-//     return res;
-// }
-
-// int mcp23018_store8(uint8_t reg, uint8_t data) {
-//     // Use the 7-bit address directly - Pico SDK handles R/W bit
-//     int res;
-
-//     uint8_t buf[2];
-//     buf[0] = reg;
-//     buf[1] = data;
-//     res = i2c_write_blocking(i2c_default, EXPANDER_ADDR, buf, 2, false);
-
-//     return res;
-// }
+void gpio_callback(uint gpio, uint32_t events) {
+    gpio_event_string(event_str, events);
+    printf("GPIO %d %s\n", gpio, event_str);
+    if (gpio == INTERRUPT_PIN) {
+        printf("\\Door sensor interrupt being handled.../\n\n");
+        mcp23018_interrupt_pending = true;
+    }
+}
 
 void bus_scan() {
     printf("\nI2C Bus Scan\n");
@@ -104,6 +89,10 @@ void bus_scan() {
 int main() {
     // Enable UART so we can print status output
     stdio_init_all();
+    gpio_init(INTERRUPT_PIN);
+    gpio_set_dir(INTERRUPT_PIN, GPIO_IN);
+    gpio_pull_up(INTERRUPT_PIN);  // Pull up since INTA is open-drain, active low
+    gpio_set_irq_enabled_with_callback(INTERRUPT_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
     if (cyw43_arch_init()) {
         printf("Wi-Fi init failed");
         return -1;
@@ -149,8 +138,8 @@ int main() {
     }
 
     mcp23018_iocon_t iocon = {
-        .INTCC = 0,
-        .INTPOL = 0,
+        .INTCC = 1,
+        .INTPOL = 0,  // Change to 0: INTA is active LOW (open-drain)
         .reserved1 = 0,
         .reserved2 = 0,
         .reserved3 = 0,
@@ -164,7 +153,11 @@ int main() {
 
     puts("\n===Configured MCP23018 - all pins as inputs except GP0===\n");
 
-    sleep_ms(100);
+    sleep_ms(10);
+
+    mcp23018_store8(GPINTENA_BANK1, 0x80);  // Enable interrupt on GPA7
+    mcp23018_store8(INTCONA_BANK1, 0x00);   // Compare against previous value (edge detection)
+    // Remove DEFVALA setting since we're using previous value mode
 
     puts("Verifying...");
 
@@ -189,8 +182,6 @@ int main() {
 
     sleep_ms(100);
 
-    puts("Set all GPIO pins HIGH - LED should light up now");
-
     puts("Testing read");
 
     uint8_t data;
@@ -206,36 +197,94 @@ int main() {
 
     // blink internal LED to indicate it is running
     while (true) {
+
+        if (mcp23018_interrupt_pending) {
+            mcp23018_interrupt_pending = false;
+            // Handle the interrupt from the MCP23018
+            uint8_t intf;
+            uint8_t intcap;
+            if (mcp23018_read8(INTFA_BANK1, &intf) == 1) {
+                printf("Interrupt on GPIOA: 0x%02x\n", intf);
+                sleep_ms(10);  // Allow time for the interrupt to settle
+                if (mcp23018_read8(INTCAPA_BANK1, &intcap) == 1) {
+                    printf("Interrupt capture on GPIOA: 0x%02x\n", intcap);
+                } else {
+                    puts("Failed to read interrupt capture");
+                }
+            } else {
+                puts("Failed to read interrupt flags");
+            }
+
+        }
+
         current_time = to_ms_since_boot(get_absolute_time());
         
-        if (mcp23018_read8(GPIOA, &data) == 1) {
-            // Rate limit printing to every 500ms
-            if (current_time - last_print_time >= 500) {
-                printf("Read GPIOA: 0x%02x\n", data);
-                last_print_time = current_time;
-            }
-        } else {
+        if (mcp23018_read8(GPIOA, &data) != 1) {
             if (current_time - last_print_time >= 500) {
                 puts("Failed to read GPIOA");
                 last_print_time = current_time;
             }
         }
         
-        // read gpio 7
-        if (data & 0x80) {
-            // GPIO 7 is high
-            mcp23018_store8(GPIOA, 0x0); 
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-        } else {
-            // GPIO 7 is low
-            mcp23018_store8(GPIOA, 0x1);
-            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+        // // read gpio 7
+        // if (data & 0x80) {
+        //     // GPIO 7 is high
+        //     mcp23018_store8(GPIOA, 0x0); 
+        //     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+        // } else {
+        //     // GPIO 7 is low
+        //     mcp23018_store8(GPIOA, 0x1);
+        //     cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+        // }
+
+        // Print GPIO pin 2 status every 1000ms
+        if (current_time - last_print_time >= 1000) {
+            bool pin2_state = gpio_get(2);
+            printf("Pico GPIO pin 2 status: %s\n", pin2_state ? "HIGH" : "LOW");
+            last_print_time = current_time;
         }
-        
+
+        // if(!mcp23018_interrupt_pending && gpio_get(2)) {
+        //     uint8_t intcap;
+        //     // If no interrupt is pending and GPIO 2 is high, attempt to clear interrupt
+        //     if (mcp23018_read8(INTCAPA_BANK1, &intcap) == 1) {
+        //         printf("!!!!!! Interrupt capture on GPIOA: 0x%02x\n", intcap);
+        //     } else {
+        //         puts("Failed to read interrupt capture");
+        //     }
+        // }
         
         sleep_ms(50);
     }
 
     return 0;
 #endif
+}
+
+static const char *gpio_irq_str[] = {
+        "LEVEL_LOW",  // 0x1
+        "LEVEL_HIGH", // 0x2
+        "EDGE_FALL",  // 0x4
+        "EDGE_RISE"   // 0x8
+};
+
+void gpio_event_string(char *buf, uint32_t events) {
+    for (uint i = 0; i < 4; i++) {
+        uint mask = (1 << i);
+        if (events & mask) {
+            // Copy this event string into the user string
+            const char *event_str = gpio_irq_str[i];
+            while (*event_str != '\0') {
+                *buf++ = *event_str++;
+            }
+            events &= ~mask;
+
+            // If more events add ", "
+            if (events) {
+                *buf++ = ',';
+                *buf++ = ' ';
+            }
+        }
+    }
+    *buf++ = '\0';
 }

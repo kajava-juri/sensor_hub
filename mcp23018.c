@@ -36,6 +36,13 @@ void mcp23018_init(i2c_inst_t *i2c, uint8_t addr) {
 }
 
 void mcp23018_configure_iocon(i2c_inst_t *i2c, uint8_t addr, mcp23018_iocon_t *iocon) {
+    int res;
+    if (iocon->BANK) {
+        res = mcp23018_store8(IOCON_BANK0, 0x80);
+        if (res < 0) {
+            printf("Failed to configure IOCON_BANK0\n");
+        }
+    }
     // Convert bit structure to byte value
     uint8_t iocon_value = 0;
     iocon_value |= (iocon->INTCC & 0x01) << 0;
@@ -44,7 +51,8 @@ void mcp23018_configure_iocon(i2c_inst_t *i2c, uint8_t addr, mcp23018_iocon_t *i
     iocon_value |= (iocon->MIRROR & 0x01) << 6;
     iocon_value |= (iocon->BANK & 0x01) << 7;
     
-    int res = mcp23018_store8(IOCON_BANK0, iocon_value);
+    
+    res = mcp23018_store8(IOCON_BANK1, iocon_value);
     if (res < 0) {
         printf("Failed to configure IOCON\n");
     }
