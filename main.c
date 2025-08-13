@@ -160,9 +160,9 @@ int main() {
     };
     mcp23018_configure_iocon(i2c_default, EXPANDER_ADDR, &iocon);
     //mcp23018_store8(IOCON_BANK0, 0xa0);
-    mcp23018_store8(IODIRA, 0x00);  // Set all pins as outputs
+    mcp23018_store8(IODIRA, 0xfe);  // Set all pins as inputs except GP0
 
-    puts("\n===Configured MCP23018 - all pins as outputs===\n");
+    puts("\n===Configured MCP23018 - all pins as inputs except GP0===\n");
 
     sleep_ms(100);
 
@@ -200,31 +200,40 @@ int main() {
         puts("Failed to read GPIOA");
     }
 
+    // Initialize rate limiter variables
+    uint32_t last_print_time = 0;
+    uint32_t current_time = 0;
+
     // blink internal LED to indicate it is running
     while (true) {
-        mcp23018_store8(GPIOA, 0x1); 
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
-        sleep_ms(10);
-        if (mcp23018_read8(GPIOA, &data) == 1) {
-            printf("Read GPIOA: 0x%02x\n", data);
-        } else {
-            puts("Failed to read GPIOA");
-        }
-
-        // sleep_ms(5000);
-        getchar();  // Wait for user input before measuring
-
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
-        mcp23018_store8(GPIOA, 0x0); 
-        sleep_ms(10);
-        if (mcp23018_read8(GPIOA, &data) == 1) {
-            printf("Read GPIOA: 0x%02x\n", data);
-        } else {
-            puts("Failed to read GPIOA");
+        current_time = to_ms_since_boot(get_absolute_time());
         
+        if (mcp23018_read8(GPIOA, &data) == 1) {
+            // Rate limit printing to every 500ms
+            if (current_time - last_print_time >= 500) {
+                printf("Read GPIOA: 0x%02x\n", data);
+                last_print_time = current_time;
+            }
+        } else {
+            if (current_time - last_print_time >= 500) {
+                puts("Failed to read GPIOA");
+                last_print_time = current_time;
+            }
         }
-        // sleep_ms(5000);
-        getchar();  // Wait for user input before measuring
+        
+        // read gpio 7
+        if (data & 0x80) {
+            // GPIO 7 is high
+            mcp23018_store8(GPIOA, 0x0); 
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);
+        } else {
+            // GPIO 7 is low
+            mcp23018_store8(GPIOA, 0x1);
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+        }
+        
+        
+        sleep_ms(50);
     }
 
     return 0;
