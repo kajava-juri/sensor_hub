@@ -27,6 +27,9 @@
 #include "pico/cyw43_arch.h"
 #include "main.h"
 #include "mcp23018.h"
+#include "alarm.h"
+#include "mqtt.h"
+#include "lwip/apps/mqtt.h"
 
 #define BANK0_IODIRA 0x00
 #define BANK0_IODIRB 0x01
@@ -89,14 +92,46 @@ void bus_scan() {
 int main() {
     // initialization
     stdio_init_all();
-    gpio_init(INTERRUPT_PIN);
-    gpio_set_dir(INTERRUPT_PIN, GPIO_IN);
-    gpio_pull_up(INTERRUPT_PIN);  // Pull up since INTA is open-drain, active low
-    gpio_set_irq_enabled_with_callback(INTERRUPT_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+    
     if (cyw43_arch_init()) {
         printf("Wi-Fi init failed");
         return -1;
     }
+
+    MQTT_CLIENT_DATA_T *mqtt_ctx = mqtt_init();
+    if (!mqtt_ctx) {
+        printf("mqtt client instant ini error\n");
+        return 0;
+    }
+
+    
+    cyw43_arch_enable_sta_mode();
+
+    int wifi_status;
+    if ((wifi_status = cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000)) != 0)
+    {
+        printf("failed to connect (%d): ", wifi_status);
+        if (wifi_status == PICO_ERROR_BADAUTH) printf("Invalid Wifi credentials");
+        else if (wifi_status == PICO_ERROR_TIMEOUT) printf("Connection timed out");
+        else if (wifi_status == PICO_ERROR_CONNECT_FAILED) printf("Could not connect to wifi for some reason...");
+        else printf("Unknown error code %d", wifi_status);
+        puts("");
+        return 1;
+    }
+
+    printf("\nConnected to Wifi\n");
+
+    if(mqtt_connect(mqtt_ctx, MQTT_SERVER) != 0) {
+        printf("MQTT connection failed\n");
+        return -1;
+    }
+    
+    printf("MQTT connection initiated, waiting for callback...\n");
+    
+    gpio_init(INTERRUPT_PIN);
+    gpio_set_dir(INTERRUPT_PIN, GPIO_IN);
+    gpio_pull_up(INTERRUPT_PIN);  // Pull up since INTA is open-drain, active low
+    gpio_set_irq_enabled_with_callback(INTERRUPT_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
 #if !defined(i2c_default) || !defined(I2C_SDA_PIN) || !defined(I2C_SCL_PIN)
 #warning i2c/bus_scan example requires a board with I2C pins
     puts("I2C pins were not defined");
@@ -195,7 +230,8 @@ int main() {
     uint32_t last_print_time = 0;
     uint32_t current_time = 0;
 
-    // blink internal LED to indicate it is running
+    alarm_context_t alarm_ctx = alarm_init();
+
     while (true) {
 
         if (mcp23018_interrupt_pending) {
@@ -207,6 +243,21 @@ int main() {
                 printf("Interrupt on GPIOA: 0x%02x\n", intf);
                 sleep_ms(10);  // Allow time for the interrupt to settle
                 if (mcp23018_read8(INTCAPA_BANK1, &intcap) == 1) {
+                    if(intf & 0x80) {
+                        // door state changed
+                        mqtt_publish_door_state(*mqtt_ctx, intcap & 0x80);
+
+                        bool door_state = intcap & 0x80;
+                        if(door_state) {
+                            // door opened
+                            printf("Door opened!\n");
+                            update_alarm_state(&alarm_ctx, EVENT_DOOR_OPEN);
+                        } else {
+                            // door closed
+                            printf("Door closed!\n");
+                            update_alarm_state(&alarm_ctx, EVENT_DOOR_CLOSE);
+                        }
+                    }
                     printf("Interrupt capture on GPIOA: 0x%02x\n", intcap);
                 } else {
                     puts("Failed to read interrupt capture");
@@ -226,10 +277,11 @@ int main() {
             }
         }
 
-        // Print GPIO pin 2 status every 1000ms
         if (current_time - last_print_time >= 1000) {
-            bool pin2_state = gpio_get(2);
-            printf("Pico GPIO pin 2 status: %s\n", pin2_state ? "HIGH" : "LOW");
+            printf("Alarm state: %d, Armed: %s, Door count: %d\n", 
+                   alarm_ctx.current_state, 
+                   alarm_ctx.armed ? "YES" : "NO",
+                   alarm_ctx.door_open_count);
             last_print_time = current_time;
         }
         
