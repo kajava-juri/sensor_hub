@@ -78,6 +78,12 @@ target_compile_definitions(sensor_hub PRIVATE
         ${MQTT_CERT_PATH}
         )
 endif()
+if (MQTT_USERNAME AND MQTT_PASSWORD)
+    target_compile_definitions(picow_mqtt_client PRIVATE
+        MQTT_USERNAME=\"${MQTT_USERNAME}\"
+        MQTT_PASSWORD=\"${MQTT_PASSWORD}\"
+    )
+endif()
 
 # Initialise the Raspberry Pi Pico SDK
 pico_sdk_init()

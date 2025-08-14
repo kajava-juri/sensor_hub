@@ -43,6 +43,8 @@
 
 static char event_str[128];
 volatile bool mcp23018_interrupt_pending = false;
+// At the top of main.c, make it static global
+static MQTT_CLIENT_DATA_T mqtt_state;
 
 void gpio_event_string(char *buf, uint32_t events);
 
@@ -98,7 +100,7 @@ int main() {
         return -1;
     }
 
-    MQTT_CLIENT_DATA_T *mqtt_ctx = mqtt_init();
+    MQTT_CLIENT_DATA_T* mqtt_ctx = mqtt_init();
     if (!mqtt_ctx) {
         printf("mqtt client instant ini error\n");
         return 0;

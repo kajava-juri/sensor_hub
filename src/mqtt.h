@@ -8,8 +8,6 @@
 // MQTT Configuration
 #define MQTT_BROKER_PORT 8883
 #define MQTT_CLIENT_ID "sensor_hub_pico"
-#define MQTT_USERNAME "test"
-#define MQTT_PASSWORD ""
 
 #define MQTT_KEEP_ALIVE_S 60
 #define MQTT_SUBSCRIBE_QOS 1

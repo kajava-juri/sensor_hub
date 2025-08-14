@@ -20,9 +20,12 @@ MQTT_CLIENT_DATA_T* mqtt_init() {
         printf("Failed to allocate memory for MQTT client\n");
         return NULL;
     }
-    
-    mqtt->mqtt_client_info.client_id = MQTT_CLIENT_ID;
-    mqtt->mqtt_client_info.keep_alive = 60;
+
+    static char client_id_buffer[32];
+    strncpy(client_id_buffer, MQTT_CLIENT_ID, sizeof(client_id_buffer) - 1);
+    client_id_buffer[sizeof(client_id_buffer) - 1] = '\0';
+    mqtt->mqtt_client_info.client_id = client_id_buffer;
+    mqtt->mqtt_client_info.keep_alive = MQTT_KEEP_ALIVE_S;
     mqtt->newTopic=false;
     #if defined(MQTT_USERNAME) && defined(MQTT_PASSWORD)
         mqtt->mqtt_client_info.client_user = MQTT_USERNAME;
@@ -31,7 +34,10 @@ MQTT_CLIENT_DATA_T* mqtt_init() {
         mqtt->mqtt_client_info.client_user = NULL;
         mqtt->mqtt_client_info.client_pass = NULL;
     #endif
-        mqtt->mqtt_client_info.will_topic = MQTT_TOPIC_HEARTBEAT;
+        static char will_topic[sizeof(MQTT_TOPIC_HEARTBEAT)];
+        strncpy(will_topic, MQTT_TOPIC_HEARTBEAT, sizeof(will_topic) - 1);
+        will_topic[sizeof(will_topic) - 1] = '\0';
+        mqtt->mqtt_client_info.will_topic = will_topic;
         mqtt->mqtt_client_info.will_msg = MQTT_WILL_MSG;
         mqtt->mqtt_client_info.will_qos = MQTT_WILL_QOS;
         mqtt->mqtt_client_info.will_retain = true;
