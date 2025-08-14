@@ -30,9 +30,27 @@ include(pico_sdk_import.cmake)
 
 project(sensor_hub C CXX ASM)
 
-set(MQTT_SERVER "192.168.1.223")
-set(WIFI_SSID "Natalja-2.4")
-set(WIFI_PASSWORD "WASDwasd213")
+# Use environment variables with fallback defaults for development
+if(DEFINED ENV{MQTT_SERVER})
+    set(MQTT_SERVER $ENV{MQTT_SERVER})
+else()
+    set(MQTT_SERVER "192.168.1.223")
+    message(WARNING "Using default MQTT_SERVER. Set MQTT_SERVER environment variable for production.")
+endif()
+
+if(DEFINED ENV{WIFI_SSID})
+    set(WIFI_SSID $ENV{WIFI_SSID})
+else()
+    set(WIFI_SSID "YOUR_WIFI_SSID")
+    message(FATAL_ERROR "WIFI_SSID environment variable is required")
+endif()
+
+if(DEFINED ENV{WIFI_PASSWORD})
+    set(WIFI_PASSWORD $ENV{WIFI_PASSWORD})
+else()
+    set(WIFI_PASSWORD "YOUR_WIFI_PASSWORD")
+    message(FATAL_ERROR "WIFI_PASSWORD environment variable is required")
+endif()
 
 if (NOT MQTT_CERT_PATH)
     set(MQTT_CERT_PATH /opt/home-sec/home-sec-proj/certs)

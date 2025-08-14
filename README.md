@@ -6,6 +6,12 @@ A Raspberry Pi Pico W based alarm using a network of sensors with MQTT connectiv
 
 This project implements a sensor hub that monitors sensor state changes using an MCP23018 I2C GPIO expander and publishes events via MQTT. The system features interrupt-driven alarm triggering, configurable alarm states, and WiFi connectivity for remote monitoring. The sensors can trigger an alarm by sending a signal to one of the expander's pins (configurable with I2C).
 
+## Preparing environment
+
+1. Clone the repository
+2. Copy `.env.example` to `.env.sh` and update with your actual credentials
+3. run `source ./.env.sh`
+
 ## Hardware Requirements
 
 - Raspberry Pi Pico W
@@ -19,12 +25,7 @@ TODO: Document the wiring connections for the MCP23018 and sensors.
 ## Dependencies
 
 ### Pico SDK
-This project uses the official Raspberry Pi Pico SDK.
-
-### Paho MQTT C Client
-MQTT functionality is implemented using the Eclipse Paho MQTT C client library:
-- Repository: https://github.com/eclipse/paho.mqtt.c
-- Documentation: https://www.eclipse.org/paho/files/mqttdoc/MQTTClient/html/index.html
+This project uses the official Raspberry Pi Pico SDK version 2.2.0.
 
 ## Building
 
