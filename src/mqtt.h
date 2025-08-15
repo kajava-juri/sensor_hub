@@ -44,5 +44,6 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
 static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags);
 static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len);
 void mqtt_publish_door_state(MQTT_CLIENT_DATA_T mqtt_ctx, bool door_state);
+void dns_found(const char *hostname, const ip_addr_t *ipaddr, void *arg);
 
 #endif // MQTT_H

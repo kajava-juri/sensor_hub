@@ -3,16 +3,27 @@
     "tasks": [
         {
             "label": "Compile Project",
-            "type": "process",
-            "isBuildCommand": true,
+            "type": "shell",
             "command": "${userHome}/.pico-sdk/ninja/v1.12.1/ninja",
             "args": ["-C", "${workspaceFolder}/build"],
-            "group": "build",
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            },
             "presentation": {
                 "reveal": "always",
                 "panel": "dedicated"
             },
             "problemMatcher": "$gcc",
+            "options": {
+                "env": {
+                    "WIFI_SSID": "${env:WIFI_SSID}",
+                    "WIFI_PASSWORD": "${env:WIFI_PASSWORD}",
+                    "MQTT_SERVER": "${env:MQTT_SERVER}",
+                    "MQTT_USERNAME": "${env:MQTT_USERNAME}",
+                    "MQTT_PASSWORD": "${env:MQTT_PASSWORD}"
+                }
+            },
             "windows": {
                 "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe"
             }

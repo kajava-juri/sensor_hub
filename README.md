@@ -11,6 +11,7 @@ This project implements a sensor hub that monitors sensor state changes using an
 1. Clone the repository
 2. Copy `.env.example` to `.env.sh` and update with your actual credentials
 3. run `source ./.env.sh`
+4. generate build files with the environmental files `cd build && cmake ..`
 
 ## Hardware Requirements
 
@@ -32,10 +33,7 @@ This project uses the official Raspberry Pi Pico SDK version 2.2.0.
 1. Ensure Pico SDK is installed and configured
 2. Install Paho MQTT C client library
 3. Clone this repository
-4. Create build directory and configure (I used the commands provided by the official VScode extension):
-   ```bash
-    # TODO: add manual commands for building
-   ```
+4. Create build directory and run the `Compile Project` task
 
 ## Configuration
 

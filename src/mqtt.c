@@ -72,32 +72,33 @@ MQTT_CLIENT_DATA_T* mqtt_init() {
 }
 
 int mqtt_connect(MQTT_CLIENT_DATA_T* mqtt_ctx, char* broker_ip) {
-    ip_addr_t addr;
-
-    if (!ip4addr_aton(broker_ip, &addr)) {
-        printf("ip error\n");
-        return -1;
-    } else {
-        printf("Found MQTT broker address %s\n", ip4addr_ntoa(&addr));
-    }
+    
+    // We are not in a callback so locking is needed when calling lwip
+    // Make a DNS request for the MQTT server IP address
+    cyw43_arch_lwip_begin();
+    int err = dns_gethostbyname(MQTT_SERVER, &mqtt_ctx->mqtt_server_address, dns_found, mqtt_ctx);
+    cyw43_arch_lwip_end();
     mqtt_ctx->mqtt_client_inst = mqtt_client_new();
-
+    
     if (!mqtt_ctx->mqtt_client_inst) {
         printf("mqtt client inst error\n");
         return -1;
     }
 
     printf("IP address of this device %s\n", ipaddr_ntoa(&(netif_list->ip_addr)));
-    printf("Connecting to mqtt server at %s\n", ipaddr_ntoa(&addr));
+    printf("Connecting to mqtt server at %s\n", ipaddr_ntoa(&mqtt_ctx->mqtt_server_address));
     
-    cyw43_arch_lwip_begin();
+    if (err == ERR_OK) {
+        cyw43_arch_lwip_begin();
 
-    err_t err = mqtt_client_connect(mqtt_ctx->mqtt_client_inst, &addr, MQTT_BROKER_PORT, mqtt_connection_cb, mqtt_ctx, &mqtt_ctx->mqtt_client_info);
-    if (err != ERR_OK) {
-        printf("mqtt_client_connect failed: %d\n", err);
-        cyw43_arch_lwip_end();
-        return -1;
+        err_t mqtt_err = mqtt_client_connect(mqtt_ctx->mqtt_client_inst, &mqtt_ctx->mqtt_server_address, MQTT_BROKER_PORT, mqtt_connection_cb, mqtt_ctx, &mqtt_ctx->mqtt_client_info);
+        if (err != ERR_OK) {
+            printf("mqtt_client_connect failed: %d\n", err);
+            cyw43_arch_lwip_end();
+            return -1;
+        }
     }
+
 
 #if LWIP_ALTCP && LWIP_ALTCP_TLS
     // This is important for MBEDTLS_SSL_SERVER_NAME_INDICATION
@@ -163,5 +164,14 @@ void mqtt_publish_door_state(MQTT_CLIENT_DATA_T mqtt_ctx, bool door_state) {
     err_t err = mqtt_publish(mqtt_ctx.mqtt_client_inst, topic, (const u8_t *)message, strlen(message), 0, 0, mqtt_request_cb, &mqtt_ctx);
     if (err != ERR_OK) {
         printf("mqtt_publish failed: %d\n", err);
+    }
+}
+
+void dns_found(const char *hostname, const ip_addr_t *ipaddr, void *arg) {
+    MQTT_CLIENT_DATA_T *state = (MQTT_CLIENT_DATA_T*)arg;
+    if (ipaddr) {
+        state->mqtt_server_address = *ipaddr;
+    } else {
+        panic("dns request failed");
     }
 }
