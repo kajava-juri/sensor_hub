@@ -1,9 +1,6 @@
 #ifndef MAIN_H
 #define MAIN_H
 
-#define WIFI_SSID "Natalja-2.4"
-#define WIFI_PASSWORD "WASDwasd213"
-
 #define EXPANDER_ADDR 0x20
 #define INTERRUPT_PIN 2
 

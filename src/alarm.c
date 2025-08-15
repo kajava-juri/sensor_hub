@@ -1,55 +1,57 @@
 #include "alarm.h"
+#include "pico/time.h"
 #include <stdio.h>
+#include <stdlib.h>
 
-alarm_state_t update_alarm_state(alarm_context_t *ctx, alarm_event_t event) {
+void update_alarm_state(alarm_context_t *ctx, alarm_event_t event) {
     switch (ctx->current_state) {
         case ALARM_STATE_ARMED:
-            if (event == EVENT_DOOR_OPEN) {
-                ctx->current_state = ALARM_STATE_TRIGGERED;
+            if (event == EVENT_TRIGGER) {
                 alarm_trigger(ctx);
+                ctx->current_state = ALARM_STATE_TRIGGERED;
             }
             else if (event == EVENT_DISARM) {
-                ctx->current_state = ALARM_STATE_OFF;
+                ctx->current_state = ALARM_STATE_DISARMED;
             }
             break;
         case ALARM_STATE_TRIGGERED:
             if (event == EVENT_TIMEOUT) {
-                ctx->current_state = ALARM_STATE_RESET;
-            }
-            else if (event == EVENT_RESET) {
-                ctx->current_state = ALARM_STATE_RESET;
-            }
-            break;
-        case ALARM_STATE_RESET:
-            if (event == EVENT_DISARM) {
-                ctx->current_state = ALARM_STATE_OFF;
-                alarm_reset(ctx);
-            }
-            break;
-        case ALARM_STATE_OFF:
-            if(event == EVENT_ARM) {
                 ctx->current_state = ALARM_STATE_ARMED;
             }
+            else if (event == EVENT_DISARM) {
+                ctx->current_state = ALARM_STATE_DISARMED;
+            }
+            else if (event == EVENT_RESET) {
+                // maybe save last state before it got triggered?
+                // currently assume that it can only be triggered when armed
+                ctx->current_state = ALARM_STATE_ARMED;
+            }
+            break;
+        case ALARM_STATE_DISARMED:
+            if (event == EVENT_ARM) {
+                ctx->current_state = ALARM_STATE_ARMED;
+            }
+            break;
         default:
             break;
     }
-    return ctx->current_state;
 }
 
 void alarm_trigger(alarm_context_t *ctx) {
-    printf("Alarm triggered\n");
+    printf("ALARM TRIGGERED!\n");
+    ctx->trigger_count++;
+    ctx->alarm_start_time = to_ms_since_boot(get_absolute_time());
+    // TODO: add buzzer, notification, etc.
 }
 
 void alarm_reset(alarm_context_t *ctx) {
     printf("Alarm reset\n");
-    ctx->door_open_count = 0;
-    ctx->armed = false;
+    ctx->current_state = ALARM_STATE_DISARMED;
 }
 
-alarm_context_t alarm_init() {
-    alarm_context_t ctx;
-    ctx.current_state = ALARM_STATE_ARMED;
-    ctx.door_open_count = 0;
-    ctx.armed = true;
+alarm_context_t *alarm_init() {
+    alarm_context_t *ctx = calloc(1, sizeof(alarm_context_t));
+    ctx->current_state = ALARM_STATE_ARMED;
+    ctx->alarm_start_time = 0;
     return ctx;
 }

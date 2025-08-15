@@ -4,6 +4,15 @@
 #include "pico/stdlib.h"
 #include "hardware/i2c.h"
 
+#define GPA7_PIN (1 << 7)
+#define GPA6_PIN (1 << 6)
+#define GPA5_PIN (1 << 5)
+#define GPA4_PIN (1 << 4)
+#define GPA3_PIN (1 << 3)
+#define GPA2_PIN (1 << 2)
+#define GPA1_PIN (1 << 1)
+#define GPA0_PIN (1 << 0)
+
 // IOCON register bit structure
 typedef struct {
     uint8_t INTCC : 1;    // bit 0: Interrupt Clearing Control

@@ -21,7 +21,7 @@
 #define MQTT_TOPIC_DOOR "sensor_hub/door"
 #define MQTT_TOPIC_ALARM "sensor_hub/alarm"
 #define MQTT_TOPIC_HEARTBEAT "sensor_hub/heartbeat"
-#define MQTT_TOPIC_COMMAND "sensor_hub/command"
+#define MQTT_TOPIC_COMMAND "sensor_hub/cmd"
 
 typedef struct MQTT_CLIENT_DATA_T_
 {

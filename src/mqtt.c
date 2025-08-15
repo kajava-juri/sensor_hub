@@ -156,8 +156,8 @@ static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len
 
 void mqtt_publish_door_state(MQTT_CLIENT_DATA_T mqtt_ctx, bool door_state) {
     char topic[100];
-    snprintf(topic, sizeof(topic), "%s/%s", MQTT_TOPIC_DOOR, door_state ? "open" : "closed");
-    
+    snprintf(topic, sizeof(topic), "%s/status", MQTT_TOPIC_DOOR);
+
     char message[50];
     snprintf(message, sizeof(message), "{\"state\": \"%s\"}", door_state ? "open" : "closed");
 

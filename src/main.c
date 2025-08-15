@@ -25,11 +25,14 @@
 #include "hardware/i2c.h"
 #include "hardware/gpio.h"
 #include "pico/cyw43_arch.h"
+#include "pico/time.h"
 #include "main.h"
 #include "mcp23018.h"
 #include "alarm.h"
 #include "mqtt.h"
 #include "lwip/apps/mqtt.h"
+#include "sensor.h"
+#include "buttons.h"
 
 #define BANK0_IODIRA 0x00
 #define BANK0_IODIRB 0x01
@@ -46,7 +49,21 @@ volatile bool mcp23018_interrupt_pending = false;
 // At the top of main.c, make it static global
 static MQTT_CLIENT_DATA_T mqtt_state;
 
+// LED blink timer variables
+static struct repeating_timer led_timer;
+static volatile bool led_blink_enabled = false;
+static volatile bool led_state = false;
+
 void gpio_event_string(char *buf, uint32_t events);
+
+// Simple LED blink timer callback
+bool led_blink_callback(struct repeating_timer *t) {
+    if (led_blink_enabled) {
+        led_state = !led_state;
+        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_state);
+    }
+    return true; // keep repeating
+}
 
 // I2C reserves some addresses for special purposes. We exclude these from the scan.
 // These are any addresses of the form 000 0xxx or 111 1xxx
@@ -57,9 +74,14 @@ bool reserved_addr(uint8_t addr) {
 void gpio_callback(uint gpio, uint32_t events) {
     gpio_event_string(event_str, events);
     printf("GPIO %d %s\n", gpio, event_str);
+    
     if (gpio == INTERRUPT_PIN) {
         printf("\\Door sensor interrupt being handled.../\n\n");
         mcp23018_interrupt_pending = true;
+    }
+    else if (gpio == ARM_SWITCH_PIN || gpio == RESET_BUTTON_PIN) {
+        // Forward button events to button handler
+        button_gpio_callback(gpio, events);
     }
 }
 
@@ -147,6 +169,23 @@ int main() {
     // Make the I2C pins available to picotool
     bi_decl(bi_2pins_with_func(I2C_SDA_PIN, I2C_SCL_PIN, GPIO_FUNC_I2C));
 
+    alarm_context_t *alarm_ctx = alarm_init();
+
+    // Initialize button manager
+    button_manager_t button_manager;
+    buttons_init(&button_manager, alarm_ctx);
+
+    // Initialize LED blink timer (500ms interval for alarm blink)
+    add_repeating_timer_ms(250, led_blink_callback, NULL, &led_timer);
+    printf("LED blink timer initialized\n");
+    
+    // Configure sensors with reduced memory footprint
+    sensor_manager_t *sensor_manager = sensor_manager_init(mqtt_ctx, alarm_ctx);
+    if (!sensor_manager) {
+        printf("Failed to initialize sensor manager\n");
+        return -1;
+    }
+
     sleep_ms(100);  // Allow time for I2C to stabilize
 
     puts("===========================\nQuick device check...");
@@ -186,7 +225,7 @@ int main() {
     };
     mcp23018_configure_iocon(i2c_default, EXPANDER_ADDR, &iocon);
     //mcp23018_store8(IOCON_BANK0, 0xa0);
-    mcp23018_store8(IODIRA, 0xfe);  // Set all pins as inputs except GP0
+    mcp23018_store8(IODIRA, sensor_manager->active_sensor_mask);  // Set all pins as inputs except GP0
 
     puts("\n===Configured MCP23018 - all pins as inputs except GP0===\n");
 
@@ -228,11 +267,17 @@ int main() {
         puts("Failed to read GPIOA");
     }
 
+    if (!gpio_get(INTERRUPT_PIN)) {
+        // clear interrupt
+        if(mcp23018_read8(INTCAPA_BANK1, &data) < 0) {
+            puts("Failed to read interrupt capture");
+        }
+    }
+
     // Initialize rate limiter variables
     uint32_t last_print_time = 0;
     uint32_t current_time = 0;
 
-    alarm_context_t alarm_ctx = alarm_init();
 
     while (true) {
 
@@ -245,46 +290,45 @@ int main() {
                 printf("Interrupt on GPIOA: 0x%02x\n", intf);
                 sleep_ms(10);  // Allow time for the interrupt to settle
                 if (mcp23018_read8(INTCAPA_BANK1, &intcap) == 1) {
-                    if(intf & 0x80) {
-                        // door state changed
-                        mqtt_publish_door_state(*mqtt_ctx, intcap & 0x80);
-
-                        bool door_state = intcap & 0x80;
-                        if(door_state) {
-                            // door opened
-                            printf("Door opened!\n");
-                            update_alarm_state(&alarm_ctx, EVENT_DOOR_OPEN);
-                        } else {
-                            // door closed
-                            printf("Door closed!\n");
-                            update_alarm_state(&alarm_ctx, EVENT_DOOR_CLOSE);
-                        }
-                    }
                     printf("Interrupt capture on GPIOA: 0x%02x\n", intcap);
+                    
+                    // Use the sensor manager to handle the interrupt
+                    sensor_handle_interrupt(sensor_manager, intf, intcap);
                 } else {
                     puts("Failed to read interrupt capture");
                 }
             } else {
                 puts("Failed to read interrupt flags");
             }
-
         }
 
         current_time = to_ms_since_boot(get_absolute_time());
-        
-        if (mcp23018_read8(GPIOA, &data) != 1) {
-            if (current_time - last_print_time >= 500) {
-                puts("Failed to read GPIOA");
-                last_print_time = current_time;
-            }
-        }
 
         if (current_time - last_print_time >= 1000) {
-            printf("Alarm state: %d, Armed: %s, Door count: %d\n", 
-                   alarm_ctx.current_state, 
-                   alarm_ctx.armed ? "YES" : "NO",
-                   alarm_ctx.door_open_count);
+            if (mcp23018_read8(GPIOA, &data) != 1) {
+                if (current_time - last_print_time >= 500) {
+                    puts("Failed to read GPIOA");
+                    last_print_time = current_time;
+                }
+            }
+            printf("Alarm state: %s; Interrupt pin state: %d; MCP23018 GPA7 state: 0x%02x\n", 
+                   alarm_state_to_string(alarm_ctx->current_state), gpio_get(INTERRUPT_PIN), data);
             last_print_time = current_time;
+        }
+
+        // Update LED based on alarm state (asynchronous blinking handled by timer)
+        switch (alarm_ctx->current_state) {
+            case ALARM_STATE_DISARMED:
+                led_blink_enabled = false;
+                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 0);  // OFF
+                break;
+            case ALARM_STATE_ARMED:
+                led_blink_enabled = false;
+                cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);  // SOLID ON
+                break;
+            case ALARM_STATE_TRIGGERED:
+                led_blink_enabled = true;  // Timer will handle blinking
+                break;
         }
         
         sleep_ms(50);
