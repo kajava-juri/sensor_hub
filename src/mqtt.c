@@ -8,6 +8,8 @@
 #include "lwip/apps/mqtt_priv.h" // needed to set hostname
 #include "lwip/dns.h"
 #include "lwip/altcp_tls.h"
+#include "main.h"
+#include "alarm.h"
 
 // This file includes your client certificate for client server authentication
 #ifdef MQTT_CERT_INC
@@ -34,8 +36,8 @@ MQTT_CLIENT_DATA_T* mqtt_init() {
         mqtt->mqtt_client_info.client_user = NULL;
         mqtt->mqtt_client_info.client_pass = NULL;
     #endif
-        static char will_topic[sizeof(MQTT_TOPIC_HEARTBEAT)];
-        strncpy(will_topic, MQTT_TOPIC_HEARTBEAT, sizeof(will_topic) - 1);
+        static char will_topic[sizeof(MQTT_FULL_TOPIC_HEARTBEAT)];
+        snprintf(will_topic, sizeof(will_topic), MQTT_FULL_TOPIC_HEARTBEAT);
         will_topic[sizeof(will_topic) - 1] = '\0';
         mqtt->mqtt_client_info.will_topic = will_topic;
         mqtt->mqtt_client_info.will_msg = MQTT_WILL_MSG;
@@ -126,6 +128,7 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
 
     if (status == MQTT_CONNECT_ACCEPTED) {
         printf("MQTT connected!\n");
+        mqtt_client->connect_done = true;
         // Indicate online
         if(mqtt_client->mqtt_client_info.will_topic) {
             mqtt_publish(mqtt_client->mqtt_client_inst, mqtt_client->mqtt_client_info.will_topic, "1", 1, MQTT_WILL_QOS, true, mqtt_request_cb, mqtt_client);
@@ -134,6 +137,10 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
         mqtt_sub_unsub(client, "sensor/commands", 0, mqtt_request_cb, arg, 1);
         mqtt_sub_unsub(client, "sensor/arm", 0, mqtt_request_cb, arg, 1);
         mqtt_sub_unsub(client, "sensor/disarm", 0, mqtt_request_cb, arg, 1);
+    } else if (status == MQTT_CONNECT_DISCONNECTED) {
+        if (!mqtt_client->connect_done) {
+            panic("MQTT connection failed");
+        }
     }
 }
 
@@ -154,9 +161,9 @@ static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len
   strcpy(mqtt_client->topic, topic);
 }
 
-void mqtt_publish_door_state(MQTT_CLIENT_DATA_T mqtt_ctx, bool door_state) {
+void mqtt_publish_door_state(MQTT_CLIENT_DATA_T mqtt_ctx, bool door_state, const char *sensor_id) {
     char topic[100];
-    snprintf(topic, sizeof(topic), "%s/status", MQTT_TOPIC_DOOR);
+    snprintf(topic, sizeof(topic), "%s/%s/door/%s/%s", SENSOR_ROOT_TOPIC, DEVICE_NAME, sensor_id, door_state ? "open" : "closed");
 
     char message[50];
     snprintf(message, sizeof(message), "{\"state\": \"%s\"}", door_state ? "open" : "closed");
@@ -174,4 +181,72 @@ void dns_found(const char *hostname, const ip_addr_t *ipaddr, void *arg) {
     } else {
         panic("dns request failed");
     }
+}
+
+void mqtt_publish_heartbeat(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_context_t *alarm_ctx) {
+    if (mqtt_ctx == NULL || mqtt_ctx->mqtt_client_inst == NULL) {
+        printf("MQTT client not initialized\n");
+        return;
+    }
+
+    uint32_t current_time = to_ms_since_boot(get_absolute_time());
+
+    char message[512];
+    snprintf(message, sizeof(message), 
+        "{"
+        "\"status\":\"online\","
+        "\"timestamp\":%lu,"
+        "\"uptime_ms\":%lu,"
+        "\"alarm_state\": \"%s\","
+        "\"wifi_connected\":true,"
+        "\"mqtt_connected\":true,"
+        "\"free_heap\":0,"
+        "\"version\":\"1.0.0\""
+        "}",
+        current_time,
+        current_time,
+        alarm_state_to_string(alarm_ctx->current_state)
+    );
+
+    err_t err = mqtt_publish(mqtt_ctx->mqtt_client_inst, MQTT_FULL_TOPIC_HEARTBEAT, (const u8_t *)message, strlen(message), 0, 0, mqtt_request_cb, mqtt_ctx);
+    if (err != ERR_OK) {
+        printf("mqtt_publish failed: %d\n", err);
+    }
+}
+
+void mqtt_publish_system_status(MQTT_CLIENT_DATA_T* mqtt_ctx, system_status_t* status, alarm_context_t *alarm_ctx) {
+    if (!mqtt_is_connected(mqtt_ctx)) return;
+    
+    char message[512];
+    snprintf(message, sizeof(message),
+        "{"
+        "\"wifi_status\":\"%s\","
+        "\"mqtt_status\":\"%s\","
+        "\"uptime_ms\":%lu,"
+        "\"sensor_count\":%lu,"
+        "\"timestamp\":%lu,"
+        "\"alarm_state\":\"%s\""
+        "}",
+        status->wifi_status,
+        status->mqtt_status,
+        status->uptime_ms,
+        status->sensor_count,
+        to_ms_since_boot(get_absolute_time()),
+        alarm_state_to_string(alarm_ctx->current_state)
+    );
+
+    char topic[128];
+    snprintf(topic, sizeof(topic), "%s/%s/status", SENSOR_ROOT_TOPIC, DEVICE_NAME);
+
+    err_t err = mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
+                            message, strlen(message), MQTT_PUBLISH_QOS, false, 
+                            mqtt_request_cb, mqtt_ctx);
+    
+    if (err != ERR_OK) {
+        printf("Failed to publish system status: %d\n", err);
+    }
+}
+
+bool mqtt_is_connected(MQTT_CLIENT_DATA_T* mqtt_ctx) {
+    return mqtt_ctx && mqtt_ctx->mqtt_client_inst && mqtt_ctx->connect_done;
 }

@@ -25,6 +25,17 @@ endif()
 # ====================================================================================
 set(PICO_BOARD pico_w CACHE STRING "Board type")
 
+# Use cached variables with environment fallback
+set(WIFI_SSID_DEFAULT "$ENV{WIFI_SSID}")
+set(WIFI_PASSWORD_DEFAULT "$ENV{WIFI_PASSWORD}")
+set(MQTT_SERVER_DEFAULT "$ENV{MQTT_SERVER}")
+
+# Create cache variables that persist between CMake runs
+set(WIFI_SSID "${WIFI_SSID_DEFAULT}" CACHE STRING "WiFi SSID")
+set(WIFI_PASSWORD "${WIFI_PASSWORD_DEFAULT}" CACHE STRING "WiFi Password") 
+set(MQTT_SERVER "${MQTT_SERVER_DEFAULT}" CACHE STRING "MQTT Server Address")
+
+
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
 
@@ -38,18 +49,18 @@ else()
     message(WARNING "Using default MQTT_SERVER. Set MQTT_SERVER environment variable for production.")
 endif()
 
-if(DEFINED ENV{WIFI_SSID})
+if(DEFINED ENV{WIFI_SSID} AND NOT "$ENV{WIFI_SSID}" STREQUAL "")
     set(WIFI_SSID $ENV{WIFI_SSID})
 else()
     set(WIFI_SSID "YOUR_WIFI_SSID")
-    message(FATAL_ERROR "WIFI_SSID environment variable is required")
+    message(FATAL_ERROR "WIFI_SSID environment variable is required and cannot be empty")
 endif()
 
-if(DEFINED ENV{WIFI_PASSWORD})
+if(DEFINED ENV{WIFI_PASSWORD} AND NOT "$ENV{WIFI_PASSWORD}" STREQUAL "")
     set(WIFI_PASSWORD $ENV{WIFI_PASSWORD})
 else()
     set(WIFI_PASSWORD "YOUR_WIFI_PASSWORD")
-    message(FATAL_ERROR "WIFI_PASSWORD environment variable is required")
+    message(FATAL_ERROR "WIFI_PASSWORD environment variable is required and cannot be empty")
 endif()
 
 if (NOT MQTT_CERT_PATH)
@@ -98,8 +109,18 @@ target_compile_definitions(sensor_hub PRIVATE
         ${MQTT_CERT_PATH}
         )
 endif()
+
+# Optional MQTT authentication
+if(DEFINED ENV{MQTT_USERNAME} AND NOT "$ENV{MQTT_USERNAME}" STREQUAL "")
+    set(MQTT_USERNAME $ENV{MQTT_USERNAME})
+endif()
+
+if(DEFINED ENV{MQTT_PASSWORD} AND NOT "$ENV{MQTT_PASSWORD}" STREQUAL "")
+    set(MQTT_PASSWORD $ENV{MQTT_PASSWORD})
+endif()
+
 if (MQTT_USERNAME AND MQTT_PASSWORD)
-    target_compile_definitions(picow_mqtt_client PRIVATE
+    target_compile_definitions(sensor_hub PRIVATE
         MQTT_USERNAME=\"${MQTT_USERNAME}\"
         MQTT_PASSWORD=\"${MQTT_PASSWORD}\"
     )

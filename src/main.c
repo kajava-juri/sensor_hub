@@ -277,7 +277,7 @@ int main() {
     // Initialize rate limiter variables
     uint32_t last_print_time = 0;
     uint32_t current_time = 0;
-
+    uint32_t last_status_time = 0;
 
     while (true) {
 
@@ -330,7 +330,18 @@ int main() {
                 led_blink_enabled = true;  // Timer will handle blinking
                 break;
         }
-        
+
+        if(current_time - last_status_time >= 30000) {
+            system_status_t status = {
+                .wifi_status = "connected",
+                .mqtt_status = mqtt_is_connected(mqtt_ctx) ? "connected" : "disconnected",
+                .uptime_ms = current_time,
+                .sensor_count = sensor_manager ? sensor_manager->sensor_count : 0,
+            };
+            mqtt_publish_system_status(mqtt_ctx, &status, alarm_ctx);
+            last_status_time = current_time;
+        }
+
         sleep_ms(50);
     }
 

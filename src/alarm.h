@@ -40,13 +40,6 @@ static inline bool alarm_is_triggered(const alarm_context_t *ctx) {
     return ctx->current_state == ALARM_STATE_TRIGGERED;
 }
 
-static inline const char* alarm_state_to_string(alarm_state_t state) {
-    switch (state) {
-        case ALARM_STATE_ARMED: return "ARMED";
-        case ALARM_STATE_DISARMED: return "DISARMED";
-        case ALARM_STATE_TRIGGERED: return "TRIGGERED";
-        default: return "UNKNOWN";
-    }
-}
+const char* alarm_state_to_string(alarm_state_t state);
 
 #endif // ALARM_H

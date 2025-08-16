@@ -18,6 +18,7 @@ sensor_manager_t* sensor_manager_init(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_contex
         .type = SENSOR_TYPE_DOOR,          // This will be cast to uint8_t
         .mcp_pin_mask = GPA7_PIN,
         .name = "Front Door",              // Now only 16 chars max
+        .computer_name = "front_door",     // Added computer-readable name
         .active = true,
         .invert_logic = false,
         .debounce_ms = 0,                  // Now uint16_t
@@ -64,7 +65,7 @@ void sensor_handle_interrupt(sensor_manager_t *manager, uint8_t intf, uint8_t in
                     printf("Door sensor '%s' %s\n", sensor->name, sensor_state ? "opened" : "closed");
                     
                     // Publish to MQTT
-                    mqtt_publish_door_state(*manager->mqtt_ctx, sensor_state);
+                    mqtt_publish_door_state(*manager->mqtt_ctx, sensor_state, sensor->computer_name);
                     
                     // Update alarm system - only trigger if armed and door opened
                     if (sensor_state && alarm_is_armed(manager->alarm_ctx)) {

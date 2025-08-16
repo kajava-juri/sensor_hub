@@ -55,3 +55,12 @@ alarm_context_t *alarm_init() {
     ctx->alarm_start_time = 0;
     return ctx;
 }
+
+const char* alarm_state_to_string(alarm_state_t state) {
+    switch (state) {
+        case ALARM_STATE_ARMED: return "ARMED";
+        case ALARM_STATE_DISARMED: return "DISARMED";
+        case ALARM_STATE_TRIGGERED: return "TRIGGERED";
+        default: return "UNKNOWN";
+    }
+}

@@ -1,5 +1,8 @@
 #ifndef MAIN_H
 #define MAIN_H
+#include "config_fallback.h"
+
+#define DEVICE_NAME "pico_w_1"
 
 #define EXPANDER_ADDR 0x20
 #define INTERRUPT_PIN 2

@@ -15,17 +15,27 @@
                 "panel": "dedicated"
             },
             "problemMatcher": "$gcc",
-            "options": {
-                "env": {
-                    "WIFI_SSID": "${env:WIFI_SSID}",
-                    "WIFI_PASSWORD": "${env:WIFI_PASSWORD}",
-                    "MQTT_SERVER": "${env:MQTT_SERVER}",
-                    "MQTT_USERNAME": "${env:MQTT_USERNAME}",
-                    "MQTT_PASSWORD": "${env:MQTT_PASSWORD}"
-                }
-            },
+            "dependsOn": "Check Environment Variables",
             "windows": {
                 "command": "${env:USERPROFILE}/.pico-sdk/ninja/v1.12.1/ninja.exe"
+            }
+        },
+        {
+            "label": "Check Environment Variables",
+            "type": "shell",
+            "command": "bash",
+            "args": [
+                "-c",
+                "source .env.sh && if [ -z \"$WIFI_SSID\" ] || [ -z \"$WIFI_PASSWORD\" ]; then echo \"Error: Environment variables not set. Please run: source .env.sh\"; exit 1; else echo \"Environment variables are set\"; fi"
+            ],
+            "group": "build",
+            "presentation": {
+                "echo": true,
+                "reveal": "silent",
+                "focus": false,
+                "panel": "shared",
+                "showReuseMessage": true,
+                "clear": false
             }
         },
         {
@@ -108,6 +118,6 @@
             "windows": {
                 "command": "${env:USERPROFILE}/.pico-sdk/openocd/0.12.0+dev/openocd.exe",
             }
-        }
+        },
     ]
 }
