@@ -2,8 +2,10 @@
 #include "pico/time.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "mqtt.h"
 
 void update_alarm_state(alarm_context_t *ctx, alarm_event_t event) {
+    alarm_context_t previous_state = *ctx;
     switch (ctx->current_state) {
         case ALARM_STATE_ARMED:
             if (event == EVENT_TRIGGER) {
@@ -35,11 +37,17 @@ void update_alarm_state(alarm_context_t *ctx, alarm_event_t event) {
         default:
             break;
     }
+
+    if(previous_state.current_state != ctx->current_state) {
+        printf("Alarm state changed from %s to %s\n",
+               alarm_state_to_string(previous_state.current_state),
+               alarm_state_to_string(ctx->current_state));
+        mqtt_flags.alarm_state_changed = true;
+    }
 }
 
 void alarm_trigger(alarm_context_t *ctx) {
     printf("ALARM TRIGGERED!\n");
-    ctx->trigger_count++;
     ctx->alarm_start_time = to_ms_since_boot(get_absolute_time());
     // TODO: add buzzer, notification, etc.
 }

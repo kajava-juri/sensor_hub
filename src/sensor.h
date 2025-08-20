@@ -3,8 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "mqtt.h"
-#include "alarm.h"
+#include "common.h"
 
 #define MAX_SENSORS 4
 
@@ -28,19 +27,6 @@ typedef enum {
     SENSOR_EVENT_BUTTON_PRESSED,
     SENSOR_EVENT_BUTTON_RELEASED,
 } sensor_event_t;
-
-// Sensor configuration structure - optimized for memory
-typedef struct {
-    uint8_t id;                    // Unique sensor ID
-    uint8_t type;                  // Type of sensor (changed from enum to uint8_t)
-    uint8_t mcp_pin_mask;          // Pin mask on MCP23018 (e.g., 0x80 for pin 7)
-    char name[16];                 // Human-readable name (reduced from 32 to 16)
-    char computer_name[16];        // Computer-readable name (reduced from 32 to 16)
-    bool active;                   // Whether this sensor is active
-    bool invert_logic;             // Invert pin logic
-    uint16_t debounce_ms;          // Debounce time in milliseconds (reduced from uint32_t)
-    uint32_t last_event_time;      // Last event timestamp for debouncing
-} sensor_config_t;
 
 // Sensor manager structure
 typedef struct {

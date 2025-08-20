@@ -33,6 +33,8 @@
 #include "lwip/apps/mqtt.h"
 #include "sensor.h"
 #include "buttons.h"
+#include "config_fallback.h"
+#include "common.h"
 
 #define BANK0_IODIRA 0x00
 #define BANK0_IODIRB 0x01
@@ -330,6 +332,8 @@ int main() {
                 led_blink_enabled = true;  // Timer will handle blinking
                 break;
         }
+
+        mqtt_check_and_publish(mqtt_ctx, alarm_ctx);
 
         if(current_time - last_status_time >= 30000) {
             system_status_t status = {

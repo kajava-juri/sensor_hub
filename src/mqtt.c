@@ -16,6 +16,8 @@
 #include MQTT_CERT_INC
 #endif
 
+mqtt_flags_t mqtt_flags = {0};
+
 MQTT_CLIENT_DATA_T* mqtt_init() {
     MQTT_CLIENT_DATA_T* mqtt=(MQTT_CLIENT_DATA_T*)calloc(1, sizeof(MQTT_CLIENT_DATA_T));
     if (!mqtt) {
@@ -161,14 +163,14 @@ static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len
   strcpy(mqtt_client->topic, topic);
 }
 
-void mqtt_publish_door_state(MQTT_CLIENT_DATA_T mqtt_ctx, bool door_state, const char *sensor_id) {
+void mqtt_publish_door_state(MQTT_CLIENT_DATA_T *mqtt_ctx, bool door_state, const char *sensor_id) {
     char topic[100];
     snprintf(topic, sizeof(topic), "%s/%s/door/%s/%s", SENSOR_ROOT_TOPIC, DEVICE_NAME, sensor_id, door_state ? "open" : "closed");
 
     char message[50];
     snprintf(message, sizeof(message), "{\"state\": \"%s\"}", door_state ? "open" : "closed");
 
-    err_t err = mqtt_publish(mqtt_ctx.mqtt_client_inst, topic, (const u8_t *)message, strlen(message), 0, 0, mqtt_request_cb, &mqtt_ctx);
+    err_t err = mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, (const u8_t *)message, strlen(message), 0, 0, mqtt_request_cb, mqtt_ctx);
     if (err != ERR_OK) {
         printf("mqtt_publish failed: %d\n", err);
     }
@@ -249,4 +251,126 @@ void mqtt_publish_system_status(MQTT_CLIENT_DATA_T* mqtt_ctx, system_status_t* s
 
 bool mqtt_is_connected(MQTT_CLIENT_DATA_T* mqtt_ctx) {
     return mqtt_ctx && mqtt_ctx->mqtt_client_inst && mqtt_ctx->connect_done;
+}
+
+void mqtt_publish_alarm_state(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* alarm_ctx) {
+    if (!mqtt_is_connected(mqtt_ctx)) return;
+
+    char message[256];
+    // snprintf(message, sizeof(message),
+    //     "{"
+    //     "\"state\":\"%s\","
+    //     "\"timestamp\":%lu"
+    //     "}",
+    //     alarm_state_to_string(alarm_ctx->current_state),
+    //     to_ms_since_boot(get_absolute_time())
+    // );
+
+    char topic[128];
+    // snprintf(topic, sizeof(topic), "%s/%s/alarm/status", SENSOR_ROOT_TOPIC, DEVICE_NAME);
+
+    // err_t err = mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
+    //                         message, strlen(message), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, 
+    //                         mqtt_request_cb, mqtt_ctx);
+
+    if(alarm_ctx->current_state == ALARM_STATE_TRIGGERED) {
+        snprintf(topic, sizeof(topic), "%s/%s/alarm/triggered", SENSOR_ROOT_TOPIC, DEVICE_NAME);
+        snprintf(message, sizeof(message), 
+            "{"
+            "\"triggered_by\":\"%s\","
+            "\"timestamp\":%lu"
+            "}",
+            alarm_ctx->triggered_sensor->computer_name,
+            to_ms_since_boot(get_absolute_time())
+        );
+        mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
+            message, strlen(message), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, 
+            mqtt_request_cb, mqtt_ctx);
+    }
+    else if(alarm_ctx->current_state == ALARM_STATE_DISARMED) {
+        snprintf(topic, sizeof(topic), "%s/%s/alarm/disarmed", SENSOR_ROOT_TOPIC, DEVICE_NAME);
+        snprintf(message, sizeof(message), 
+            "{"
+            "\"timestamp\":%lu"
+            "}",
+            to_ms_since_boot(get_absolute_time())
+        );
+        mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
+            message, strlen(message), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, 
+            mqtt_request_cb, mqtt_ctx);
+    }
+    else if(alarm_ctx->current_state == ALARM_STATE_ARMED) {
+        snprintf(topic, sizeof(topic), "%s/%s/alarm/armed", SENSOR_ROOT_TOPIC, DEVICE_NAME);
+        snprintf(message, sizeof(message), 
+            "{"
+            "\"timestamp\":%lu"
+            "}",
+            to_ms_since_boot(get_absolute_time())
+        );
+        mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
+            message, strlen(message), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, 
+            mqtt_request_cb, mqtt_ctx);
+    }
+    if (err != ERR_OK) {
+        printf("Failed to publish alarm state: %d\n", err);
+    }
+}
+
+void mqtt_check_and_publish(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* alarm_ctx) {
+   if (!mqtt_is_connected(mqtt_ctx)) {
+       return;  // Skip if MQTT not connected
+   }
+   
+   uint32_t current_time = to_ms_since_boot(get_absolute_time());
+   
+   // Check alarm state changes
+   if (mqtt_flags.alarm_state_changed) {
+       // Publish: /sensor_hub/<device>/alarm/status
+       // Body: {"state": "armed|disarmed|triggered", "triggered_by": "button|door|timeout", "timestamp": 123456}
+       mqtt_publish_alarm_state(mqtt_ctx, alarm_ctx);
+       
+       // Clear flag after publishing
+       mqtt_flags.alarm_state_changed = false;
+       mqtt_flags.last_published_alarm_state = alarm_ctx->current_state;
+   }
+   
+   // Check door state changes
+   if (mqtt_flags.door_state_changed) {
+       // Publish: /sensor_hub/<device>/door/<sensor_id>/status
+       // Body: {"state": "open|closed", "timestamp": 123456}
+       // Also publish: /sensor_hub/<device>/door/<sensor_id>/open (or /closed)
+       //mqtt_publish_door_event(mqtt_ctx, mqtt_flags.last_door_sensor, mqtt_flags.last_door_state);
+       mqtt_publish_door_state(mqtt_ctx, mqtt_flags.last_door_state, mqtt_flags.last_door_sensor->computer_name);
+
+       mqtt_flags.door_state_changed = false;
+   }
+   
+   // Check motion sensor changes (if you add them later)
+   if (mqtt_flags.motion_state_changed) {
+       // Publish: /sensor_hub/<device>/motion/<sensor_id>/status
+       // Body: {"state": "detected|clear", "timestamp": 123456}
+       mqtt_flags.motion_state_changed = false;
+   }
+   
+   // Check button events
+   if (mqtt_flags.button_pressed) {
+       // Publish: /sensor_hub/<device>/button/<button_id>/pressed
+       // Body: {"button": "arm|disarm|reset", "timestamp": 123456}
+       mqtt_flags.button_pressed = false;
+   }
+   
+   // Periodic heartbeat/status
+   if (current_time - mqtt_flags.last_heartbeat_time > HEARTBEAT_INTERVAL_MS) {
+       // Publish: /sensor_hub/<device>/system/heartbeat
+       // Body: {"uptime": 123456, "state": "armed", "wifi_rssi": -45, "free_memory": 1024}
+       mqtt_publish_heartbeat(mqtt_ctx, alarm_ctx);
+       mqtt_flags.last_heartbeat_time = current_time;
+   }
+   
+   // Error/diagnostic messages (optional)
+   if (mqtt_flags.error_occurred) {
+       // Publish: /sensor_hub/<device>/system/error
+       // Body: {"error": "i2c_timeout", "timestamp": 123456}
+       mqtt_flags.error_occurred = false;
+   }
 }

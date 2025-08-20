@@ -41,6 +41,8 @@
         "cstdint": "c",
         "cstdlib": "c",
         "*.inc": "c",
-        "stdbool.h": "c"
+        "stdbool.h": "c",
+        "sensor.h": "c",
+        "alarm.h": "c"
     }
 }

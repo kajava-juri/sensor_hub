@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "pico/stdlib.h"
 #include <stdbool.h>
-#include "alarm.h"
+#include "common.h"
 
 // GPIO pin assignments for buttons
 #define ARM_SWITCH_PIN      3

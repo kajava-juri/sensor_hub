@@ -3,12 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-
-typedef enum {
-    ALARM_STATE_ARMED,
-    ALARM_STATE_DISARMED,
-    ALARM_STATE_TRIGGERED,
-} alarm_state_t;
+#include "common.h"
 
 typedef enum {
     EVENT_ARM,
@@ -17,13 +12,6 @@ typedef enum {
     EVENT_RESET,
     EVENT_TRIGGER
 } alarm_event_t;
-
-typedef struct {
-    alarm_state_t current_state;
-    uint32_t alarm_start_time;
-    uint32_t door_open_count;
-    uint32_t trigger_count;  // Track how many times alarm has been triggered
-} alarm_context_t;
 
 alarm_context_t* alarm_init(void);
 void alarm_trigger(alarm_context_t *ctx);

@@ -1,6 +1,5 @@
 #ifndef MAIN_H
 #define MAIN_H
-#include "config_fallback.h"
 
 #define DEVICE_NAME "pico_w_1"
 

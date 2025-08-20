@@ -5,6 +5,10 @@
 #include <stdbool.h>
 #include "lwip/apps/mqtt.h"
 #include "alarm.h"
+#include "sensor.h"
+#include "common.h"
+
+#define HEARTBEAT_INTERVAL_MS 10000
 
 // MQTT Configuration
 #define MQTT_BROKER_PORT 8883
@@ -32,19 +36,19 @@ typedef struct {
     uint32_t sensor_count;
 } system_status_t;
 
-typedef struct MQTT_CLIENT_DATA_T_
-{
-    mqtt_client_t *mqtt_client_inst;
-    struct mqtt_connect_client_info_t mqtt_client_info;
-    uint8_t data[MQTT_OUTPUT_RINGBUF_SIZE];
-    uint8_t topic[100];
-    uint32_t len;
-    bool newTopic;
-    bool stop_client;
-    int subscribe_count;
-    bool connect_done;
-    ip_addr_t mqtt_server_address;
-} MQTT_CLIENT_DATA_T;
+typedef struct {
+    bool alarm_state_changed;
+    bool door_state_changed;
+    bool motion_state_changed;
+    bool button_pressed;
+    uint32_t last_heartbeat_time;
+    bool error_occurred;
+    uint32_t last_published_alarm_state;
+    sensor_config_t* last_door_sensor;
+    bool last_door_state;
+} mqtt_flags_t;
+
+extern mqtt_flags_t mqtt_flags;
 
 MQTT_CLIENT_DATA_T* mqtt_init();
 int mqtt_connect(MQTT_CLIENT_DATA_T* mqtt_ctx, char* broker_ip);
@@ -52,10 +56,11 @@ static void mqtt_request_cb(void *arg, err_t err);
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status);
 static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags);
 static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len);
-void mqtt_publish_door_state(MQTT_CLIENT_DATA_T mqtt_ctx, bool door_state, const char *sensor_id);
+void mqtt_publish_door_state(MQTT_CLIENT_DATA_T *mqtt_ctx, bool door_state, const char *sensor_id);
 void dns_found(const char *hostname, const ip_addr_t *ipaddr, void *arg);
 bool mqtt_is_connected(MQTT_CLIENT_DATA_T* mqtt_ctx);
 void mqtt_publish_system_status(MQTT_CLIENT_DATA_T* mqtt_ctx, system_status_t* status, alarm_context_t *alarm_ctx);
 void mqtt_publish_heartbeat(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_context_t *alarm_ctx);
+void mqtt_check_and_publish(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* alarm_ctx);
 
 #endif // MQTT_H

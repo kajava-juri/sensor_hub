@@ -3,8 +3,8 @@
 #include "pico/time.h"
 #include "sensor.h"
 #include "mcp23018.h"
-#include "mqtt.h"
 #include "alarm.h"
+#include "mqtt.h"
 
 sensor_manager_t* sensor_manager_init(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_context_t *alarm_ctx) {
     // Get all sensor config from a file maybe?
@@ -65,8 +65,11 @@ void sensor_handle_interrupt(sensor_manager_t *manager, uint8_t intf, uint8_t in
                     printf("Door sensor '%s' %s\n", sensor->name, sensor_state ? "opened" : "closed");
                     
                     // Publish to MQTT
-                    mqtt_publish_door_state(*manager->mqtt_ctx, sensor_state, sensor->computer_name);
-                    
+                    //mqtt_publish_door_state(*manager->mqtt_ctx, sensor_state, sensor->computer_name);
+                    manager->alarm_ctx->triggered_sensor = sensor;
+                    mqtt_flags.last_door_sensor = sensor;
+                    mqtt_flags.last_door_state = sensor_state;
+
                     // Update alarm system - only trigger if armed and door opened
                     if (sensor_state && alarm_is_armed(manager->alarm_ctx)) {
                         printf("Door opened while armed - triggering alarm!\n");

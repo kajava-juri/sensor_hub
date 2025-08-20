@@ -3,6 +3,7 @@
 #include "hardware/gpio.h"
 #include "pico/time.h"
 #include <stdio.h>
+#include "alarm.h"
 
 static button_manager_t* g_button_manager = NULL;
 
