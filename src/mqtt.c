@@ -257,21 +257,7 @@ void mqtt_publish_alarm_state(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* ala
     if (!mqtt_is_connected(mqtt_ctx)) return;
 
     char message[256];
-    // snprintf(message, sizeof(message),
-    //     "{"
-    //     "\"state\":\"%s\","
-    //     "\"timestamp\":%lu"
-    //     "}",
-    //     alarm_state_to_string(alarm_ctx->current_state),
-    //     to_ms_since_boot(get_absolute_time())
-    // );
-
     char topic[128];
-    // snprintf(topic, sizeof(topic), "%s/%s/alarm/status", SENSOR_ROOT_TOPIC, DEVICE_NAME);
-
-    // err_t err = mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
-    //                         message, strlen(message), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, 
-    //                         mqtt_request_cb, mqtt_ctx);
 
     if(alarm_ctx->current_state == ALARM_STATE_TRIGGERED) {
         snprintf(topic, sizeof(topic), "%s/%s/alarm/triggered", SENSOR_ROOT_TOPIC, DEVICE_NAME);
@@ -283,9 +269,12 @@ void mqtt_publish_alarm_state(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* ala
             alarm_ctx->triggered_sensor->computer_name,
             to_ms_since_boot(get_absolute_time())
         );
-        mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
+        err_t err = mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
             message, strlen(message), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, 
             mqtt_request_cb, mqtt_ctx);
+        if (err != ERR_OK) {
+            printf("Failed to publish alarm triggered: %d\n", err);
+        }
     }
     else if(alarm_ctx->current_state == ALARM_STATE_DISARMED) {
         snprintf(topic, sizeof(topic), "%s/%s/alarm/disarmed", SENSOR_ROOT_TOPIC, DEVICE_NAME);
@@ -295,9 +284,12 @@ void mqtt_publish_alarm_state(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* ala
             "}",
             to_ms_since_boot(get_absolute_time())
         );
-        mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
+        err_t err = mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
             message, strlen(message), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, 
             mqtt_request_cb, mqtt_ctx);
+        if (err != ERR_OK) {
+            printf("Failed to publish alarm disarmed: %d\n", err);
+        }
     }
     else if(alarm_ctx->current_state == ALARM_STATE_ARMED) {
         snprintf(topic, sizeof(topic), "%s/%s/alarm/armed", SENSOR_ROOT_TOPIC, DEVICE_NAME);
@@ -307,12 +299,12 @@ void mqtt_publish_alarm_state(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* ala
             "}",
             to_ms_since_boot(get_absolute_time())
         );
-        mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
+        err_t err = mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, 
             message, strlen(message), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, 
             mqtt_request_cb, mqtt_ctx);
-    }
-    if (err != ERR_OK) {
-        printf("Failed to publish alarm state: %d\n", err);
+        if (err != ERR_OK) {
+            printf("Failed to publish alarm armed: %d\n", err);
+        }
     }
 }
 
