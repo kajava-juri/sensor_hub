@@ -26,8 +26,13 @@ MQTT_CLIENT_DATA_T* mqtt_init() {
     }
 
     static char client_id_buffer[32];
+    static char will_topic_buffer[64];
     strncpy(client_id_buffer, MQTT_CLIENT_ID, sizeof(client_id_buffer) - 1);
     client_id_buffer[sizeof(client_id_buffer) - 1] = '\0';
+    
+    snprintf(will_topic_buffer, sizeof(will_topic_buffer), MQTT_FULL_TOPIC_HEARTBEAT);
+    will_topic_buffer[sizeof(will_topic_buffer) - 1] = '\0';
+
     mqtt->mqtt_client_info.client_id = client_id_buffer;
     mqtt->mqtt_client_info.keep_alive = MQTT_KEEP_ALIVE_S;
     mqtt->newTopic=false;
@@ -38,10 +43,7 @@ MQTT_CLIENT_DATA_T* mqtt_init() {
         mqtt->mqtt_client_info.client_user = NULL;
         mqtt->mqtt_client_info.client_pass = NULL;
     #endif
-        static char will_topic[sizeof(MQTT_FULL_TOPIC_HEARTBEAT)];
-        snprintf(will_topic, sizeof(will_topic), MQTT_FULL_TOPIC_HEARTBEAT);
-        will_topic[sizeof(will_topic) - 1] = '\0';
-        mqtt->mqtt_client_info.will_topic = will_topic;
+        mqtt->mqtt_client_info.will_topic = will_topic_buffer;
         mqtt->mqtt_client_info.will_msg = MQTT_WILL_MSG;
         mqtt->mqtt_client_info.will_qos = MQTT_WILL_QOS;
         mqtt->mqtt_client_info.will_retain = true;
@@ -117,9 +119,11 @@ int mqtt_connect(MQTT_CLIENT_DATA_T* mqtt_ctx, char* broker_ip) {
 }
 
 static void mqtt_request_cb(void *arg, err_t err) {
-  MQTT_CLIENT_DATA_T* mqtt_client = ( MQTT_CLIENT_DATA_T*)arg;
- 
-  LWIP_PLATFORM_DIAG(("MQTT client \"%s\" request cb: err %d\n", mqtt_client->mqtt_client_info.client_id, (int)err));
+    MQTT_CLIENT_DATA_T* mqtt_client = (MQTT_CLIENT_DATA_T*)arg;
+    
+    if (err != ERR_OK) {
+        printf("MQTT publish failed: %d\n", err);
+    }
 }
 
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status) {
@@ -131,6 +135,8 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
     if (status == MQTT_CONNECT_ACCEPTED) {
         printf("MQTT connected!\n");
         mqtt_client->connect_done = true;
+        mqtt_client->reconnect_needed = false;
+        mqtt_client->reconnect_attempts = 0;
         // Indicate online
         if(mqtt_client->mqtt_client_info.will_topic) {
             mqtt_publish(mqtt_client->mqtt_client_inst, mqtt_client->mqtt_client_info.will_topic, "1", 1, MQTT_WILL_QOS, true, mqtt_request_cb, mqtt_client);
@@ -140,9 +146,90 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
         mqtt_sub_unsub(client, "sensor/arm", 0, mqtt_request_cb, arg, 1);
         mqtt_sub_unsub(client, "sensor/disarm", 0, mqtt_request_cb, arg, 1);
     } else if (status == MQTT_CONNECT_DISCONNECTED) {
-        if (!mqtt_client->connect_done) {
-            panic("MQTT connection failed");
+        printf("MQTT disconnected \n");
+        mqtt_client->connect_done = false;
+        mqtt_client->last_disconnect_time = to_ms_since_boot(get_absolute_time());
+        mqtt_client->reconnect_needed = true;
+    }
+}
+
+bool mqtt_attempt_reconnect(MQTT_CLIENT_DATA_T* mqtt_ctx) {
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    
+    // Don't attempt reconnection too frequently
+    if (now - mqtt_ctx->last_reconnect_attempt < 5000) {  // Wait 5 seconds between attempts
+        return false;
+    }
+    
+    mqtt_ctx->last_reconnect_attempt = now;
+    mqtt_ctx->reconnect_attempts++;
+    
+    printf("MQTT reconnection attempt #%lu\n", mqtt_ctx->reconnect_attempts);
+    
+    // Clean up old client instance
+    if (mqtt_ctx->mqtt_client_inst) {
+        mqtt_disconnect(mqtt_ctx->mqtt_client_inst);
+        // Note: lwIP MQTT doesn't have explicit free function, memory is managed by lwIP
+        mqtt_ctx->mqtt_client_inst = NULL;
+    }
+    
+    // Create new client instance
+    mqtt_ctx->mqtt_client_inst = mqtt_client_new();
+    if (!mqtt_ctx->mqtt_client_inst) {
+        printf("Failed to create new MQTT client instance\n");
+        return false;
+    }
+    
+    // Attempt connection
+    cyw43_arch_lwip_begin();
+    err_t err = mqtt_client_connect(mqtt_ctx->mqtt_client_inst, &mqtt_ctx->mqtt_server_address, 
+                                   MQTT_BROKER_PORT, mqtt_connection_cb, mqtt_ctx, 
+                                   &mqtt_ctx->mqtt_client_info);
+    
+    if (err != ERR_OK) {
+        printf("MQTT reconnection failed: %d\n", err);
+        cyw43_arch_lwip_end();
+        return false;
+    }
+    
+    #if LWIP_ALTCP && LWIP_ALTCP_TLS
+    // Reset TLS hostname for new connection
+    mbedtls_ssl_set_hostname(altcp_tls_context(mqtt_ctx->mqtt_client_inst->conn), MQTT_SERVER);
+    #endif
+    
+    mqtt_set_inpub_callback(mqtt_ctx->mqtt_client_inst, mqtt_incoming_publish_cb, mqtt_incoming_data_cb, mqtt_ctx);
+    cyw43_arch_lwip_end();
+    
+    printf("MQTT reconnection initiated\n");
+    return true;
+}
+
+void mqtt_handle_reconnection(MQTT_CLIENT_DATA_T *mqtt_ctx) {
+    if(!mqtt_ctx->reconnect_needed) return;
+
+    // Check if we have TCP/IP connectivity first
+    int link_status = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA);
+    if (link_status != CYW43_LINK_UP) {
+        printf("No TCP/IP connectivity (status: %d), cannot reconnect MQTT\n", link_status);
+        return;
+    }
+
+    // exponential backoff with capped at 1 minute
+    uint32_t backoff_time = 5000;
+    if(mqtt_ctx->reconnect_attempts > 1) {
+        backoff_time = 5000 << (mqtt_ctx->reconnect_attempts - 1);
+        if (backoff_time > 60000) {
+            backoff_time = 60000;
         }
+    }
+
+    uint32_t now = to_ms_since_boot(get_absolute_time());
+    if(now - mqtt_ctx->last_reconnect_attempt < backoff_time) {
+        return;
+    }
+
+    if(mqtt_attempt_reconnect(mqtt_ctx)){
+        mqtt_ctx->reconnect_needed = false;
     }
 }
 
@@ -193,7 +280,7 @@ void mqtt_publish_heartbeat(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_context_t *alarm
 
     uint32_t current_time = to_ms_since_boot(get_absolute_time());
 
-    char message[512];
+    static char message[512];
     snprintf(message, sizeof(message), 
         "{"
         "\"status\":\"online\","
@@ -202,7 +289,6 @@ void mqtt_publish_heartbeat(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_context_t *alarm
         "\"alarm_state\": \"%s\","
         "\"wifi_connected\":true,"
         "\"mqtt_connected\":true,"
-        "\"free_heap\":0,"
         "\"version\":\"1.0.0\""
         "}",
         current_time,

@@ -61,8 +61,35 @@ void gpio_event_string(char *buf, uint32_t events);
 // Simple LED blink timer callback
 bool led_blink_callback(struct repeating_timer *t) {
     if (led_blink_enabled) {
-        led_state = !led_state;
-        cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_state);
+        alarm_context_t *alarm_ctx = (alarm_context_t*)t->user_data;
+        static uint8_t blink_counter = 0;
+
+        blink_counter++;
+
+        // Different blink patterns based on state
+        bool should_toggle = false;
+        switch (alarm_ctx->current_state) {
+            case ALARM_STATE_ARMING:
+                // Slow blink: every 4th callback (1 second intervals with 250ms timer)
+                should_toggle = (blink_counter % 4 == 0);
+                break;
+            case ALARM_STATE_TRIGGERING:
+                // Medium blink: every 2nd callback (500ms intervals)
+                should_toggle = (blink_counter % 2 == 0);
+                break;
+            case ALARM_STATE_TRIGGERED:
+                // Fast blink: every callback (250ms intervals)
+                should_toggle = true;
+                break;
+            default:
+                should_toggle = true;
+                break;
+        }
+        
+        if (should_toggle) {
+            led_state = !led_state;
+            cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, led_state);
+        }
     }
     return true; // keep repeating
 }
@@ -178,7 +205,7 @@ int main() {
     buttons_init(&button_manager, alarm_ctx);
 
     // Initialize LED blink timer (500ms interval for alarm blink)
-    add_repeating_timer_ms(250, led_blink_callback, NULL, &led_timer);
+    add_repeating_timer_ms(250, led_blink_callback, alarm_ctx, &led_timer);
     printf("LED blink timer initialized\n");
     
     // Configure sensors with reduced memory footprint
@@ -306,15 +333,17 @@ int main() {
 
         current_time = to_ms_since_boot(get_absolute_time());
 
-        if (current_time - last_print_time >= 1000) {
-            if (mcp23018_read8(GPIOA, &data) != 1) {
-                if (current_time - last_print_time >= 500) {
-                    puts("Failed to read GPIOA");
-                    last_print_time = current_time;
-                }
-            }
-            printf("Alarm state: %s; Interrupt pin state: %d; MCP23018 GPA7 state: 0x%02x\n", 
-                   alarm_state_to_string(alarm_ctx->current_state), gpio_get(INTERRUPT_PIN), data);
+        if (current_time - last_print_time >= 6000) {
+            // if (mcp23018_read8(GPIOA, &data) != 1) {
+            //     if (current_time - last_print_time >= 1000) {
+            //         puts("Failed to read GPIOA");
+            //         last_print_time = current_time;
+            //     }
+            // }
+            printf("Alarm state: %s; MQTT: %s; Interrupt pin: %d\n", 
+                alarm_state_to_string(alarm_ctx->current_state),
+                mqtt_is_connected(mqtt_ctx) ? "connected" : "disconnected",
+                gpio_get(INTERRUPT_PIN));
             last_print_time = current_time;
         }
 
@@ -328,6 +357,9 @@ int main() {
                 led_blink_enabled = false;
                 cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);  // SOLID ON
                 break;
+            case ALARM_STATE_TRIGGERING:
+                led_blink_enabled = true;   // slow blink
+                break;
             case ALARM_STATE_TRIGGERED:
                 led_blink_enabled = true;  // Timer will handle blinking
                 break;
@@ -335,9 +367,12 @@ int main() {
 
         mqtt_check_and_publish(mqtt_ctx, alarm_ctx);
 
+        // will only process if mqtt->reconnect_needed is set to true, otherwise it instantly returns
+        mqtt_handle_reconnection(mqtt_ctx);
+
         if(current_time - last_status_time >= 30000) {
             system_status_t status = {
-                .wifi_status = "connected",
+                .wifi_status = cyw43_tcpip_link_status(&cyw43_state, CYW43_ITF_STA) == CYW43_LINK_UP ? "connected" : "disconnected",
                 .mqtt_status = mqtt_is_connected(mqtt_ctx) ? "connected" : "disconnected",
                 .uptime_ms = current_time,
                 .sensor_count = sensor_manager ? sensor_manager->sensor_count : 0,
@@ -379,4 +414,20 @@ void gpio_event_string(char *buf, uint32_t events) {
         }
     }
     *buf++ = '\0';
+}
+
+void detailed_panic(const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    printf("PANIC: ");
+    vprintf(fmt, args);
+    printf("\n");
+    va_end(args);
+    
+    // Print stack trace info if possible
+    printf("Stack pointer: %p\n", __builtin_frame_address(0));
+    
+    while(1) {
+        tight_loop_contents();
+    }
 }

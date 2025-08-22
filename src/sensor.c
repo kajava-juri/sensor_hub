@@ -73,7 +73,8 @@ void sensor_handle_interrupt(sensor_manager_t *manager, uint8_t intf, uint8_t in
                     // Update alarm system - only trigger if armed and door opened
                     if (sensor_state && alarm_is_armed(manager->alarm_ctx)) {
                         printf("Door opened while armed - triggering alarm!\n");
-                        update_alarm_state(manager->alarm_ctx, EVENT_TRIGGER);
+                        //update_alarm_state(manager->alarm_ctx, EVENT_TRIGGER);
+                        update_alarm_state(manager->alarm_ctx, EVENT_ENTRY_DELAY);
                     } else if (sensor_state) {
                         printf("Door opened while disarmed - no alarm\n");
                     }

@@ -25,5 +25,6 @@
 
 #define INTCAPA_BANK1 0x08
 
+void detailed_panic(const char *fmt, ...);
 
 #endif // MAIN_H

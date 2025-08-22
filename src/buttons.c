@@ -66,8 +66,7 @@ void button_gpio_callback(uint gpio, uint32_t events) {
             if (switch_high) {
                 // Switch to HIGH position (3.33V) = ARM
                 if (g_button_manager->alarm_ctx->current_state == ALARM_STATE_DISARMED) {
-                    update_alarm_state(g_button_manager->alarm_ctx, EVENT_ARM);
-                    printf("System ARMED\n");
+                    update_alarm_state(g_button_manager->alarm_ctx, EVENT_EXIT_DELAY);
                 } else {
                     printf("System already armed or in triggered state\n");
                 }

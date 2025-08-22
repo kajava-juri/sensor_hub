@@ -98,9 +98,10 @@ target_compile_definitions(sensor_hub PRIVATE
     WIFI_SSID=\"${WIFI_SSID}\"
     WIFI_PASSWORD=\"${WIFI_PASSWORD}\"
     MQTT_SERVER=\"${MQTT_SERVER}\"
+    PICO_PANIC_FUNCTION=detailed_panic
     )
 
-    if (EXISTS "${MQTT_CERT_PATH}/${MQTT_CERT_INC}")
+if (EXISTS "${MQTT_CERT_PATH}/${MQTT_CERT_INC}")
     target_compile_definitions(sensor_hub PRIVATE
         MQTT_CERT_INC=\"${MQTT_CERT_INC}\" # contains the tls certificates for MQTT_SERVER needed by the client
         ALTCP_MBEDTLS_AUTHMODE=MBEDTLS_SSL_VERIFY_REQUIRED

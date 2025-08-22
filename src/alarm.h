@@ -4,14 +4,26 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "common.h"
+#include "pico/time.h"
+
+#define EXIT_DELAY_MS 10000
+#define ENTRY_DELAY_MS 10000
 
 typedef enum {
     EVENT_ARM,
     EVENT_DISARM,
     EVENT_TIMEOUT,
     EVENT_RESET,
-    EVENT_TRIGGER
+    EVENT_TRIGGER,
+    EVENT_EXIT_DELAY,
+    EVENT_ENTRY_DELAY
 } alarm_event_t;
+
+typedef struct {
+    struct repeating_timer timer;
+    bool active;
+    alarm_context_t *ctx;
+} alarm_timer_t;
 
 alarm_context_t* alarm_init(void);
 void alarm_trigger(alarm_context_t *ctx);
@@ -29,5 +41,8 @@ static inline bool alarm_is_triggered(const alarm_context_t *ctx) {
 }
 
 const char* alarm_state_to_string(alarm_state_t state);
+
+bool exit_delay_callback(struct repeating_timer *rt);
+bool entry_delay_callback(struct repeating_timer *rt);
 
 #endif // ALARM_H

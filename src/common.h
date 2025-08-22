@@ -4,6 +4,7 @@
 #include "lwip/apps/mqtt.h"
 #include <stdint.h>
 #include <stdbool.h>
+#include "pico/time.h"
 
 typedef struct
 {
@@ -17,12 +18,18 @@ typedef struct
     int subscribe_count;
     bool connect_done;
     ip_addr_t mqtt_server_address;
+    uint32_t last_disconnect_time;
+    uint32_t last_reconnect_attempt;
+    bool reconnect_needed;
+    uint8_t reconnect_attempts;
 } MQTT_CLIENT_DATA_T;
 
 typedef enum {
     ALARM_STATE_ARMED,
+    ALARM_STATE_ARMING,
     ALARM_STATE_DISARMED,
     ALARM_STATE_TRIGGERED,
+    ALARM_STATE_TRIGGERING
 } alarm_state_t;
 
 // Sensor configuration structure - optimized for memory
@@ -42,6 +49,11 @@ typedef struct {
     alarm_state_t current_state;
     uint32_t alarm_start_time;
     sensor_config_t* triggered_sensor; // Sensor that triggered the alarm
+
+    struct repeating_timer entry_timer;
+    struct repeating_timer exit_timer;
+    bool exit_delay_active;
+    bool enter_delay_active;
 } alarm_context_t;
 
 #endif // COMMON_H

@@ -62,5 +62,6 @@ bool mqtt_is_connected(MQTT_CLIENT_DATA_T* mqtt_ctx);
 void mqtt_publish_system_status(MQTT_CLIENT_DATA_T* mqtt_ctx, system_status_t* status, alarm_context_t *alarm_ctx);
 void mqtt_publish_heartbeat(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_context_t *alarm_ctx);
 void mqtt_check_and_publish(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* alarm_ctx);
+void mqtt_handle_reconnection(MQTT_CLIENT_DATA_T *mqtt_ctx);
 
 #endif // MQTT_H

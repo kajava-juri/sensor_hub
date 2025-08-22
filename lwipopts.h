@@ -27,6 +27,15 @@
 #define TCP_WND  16384
 #endif // MQTT_CERT_INC
 
+#undef MEMP_NUM_TCP_SEG  
+#define MEMP_NUM_TCP_SEG 48
+
+#undef TCP_SND_BUF
+#define TCP_SND_BUF (12 * TCP_MSS)
+
+#undef MEM_SIZE
+#define MEM_SIZE 12000
+
 // This defaults to 4
 #define MQTT_REQ_MAX_IN_FLIGHT 5
 
