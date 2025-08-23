@@ -26,6 +26,8 @@ Reasoning for this is to stop compiling if environmental variables are not prepa
 
 TODO: Document the wiring connections for the MCP23018 and sensors.
 
+![schematic](https://i.imgur.com/MJUmkO6.png)
+
 ## Dependencies
 
 ### Pico SDK
