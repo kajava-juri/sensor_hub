@@ -199,6 +199,7 @@ int main() {
     bi_decl(bi_2pins_with_func(I2C_SDA_PIN, I2C_SCL_PIN, GPIO_FUNC_I2C));
 
     alarm_context_t *alarm_ctx = alarm_init();
+    mqtt_set_alarm_context(alarm_ctx);
 
     // Initialize button manager
     button_manager_t button_manager;

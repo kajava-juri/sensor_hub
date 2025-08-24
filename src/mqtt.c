@@ -17,6 +17,7 @@
 #endif
 
 mqtt_flags_t mqtt_flags = {0};
+static alarm_context_t *g_alarm_ctx = NULL;
 
 MQTT_CLIENT_DATA_T* mqtt_init() {
     MQTT_CLIENT_DATA_T* mqtt=(MQTT_CLIENT_DATA_T*)calloc(1, sizeof(MQTT_CLIENT_DATA_T));
@@ -118,7 +119,7 @@ int mqtt_connect(MQTT_CLIENT_DATA_T* mqtt_ctx, char* broker_ip) {
     return 0;
 }
 
-static void mqtt_request_cb(void *arg, err_t err) {
+void mqtt_request_cb(void *arg, err_t err) {
     MQTT_CLIENT_DATA_T* mqtt_client = (MQTT_CLIENT_DATA_T*)arg;
     
     if (err != ERR_OK) {
@@ -142,9 +143,12 @@ static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection
             mqtt_publish(mqtt_client->mqtt_client_inst, mqtt_client->mqtt_client_info.will_topic, "1", 1, MQTT_WILL_QOS, true, mqtt_request_cb, mqtt_client);
         }
 
-        mqtt_sub_unsub(client, "sensor/commands", 0, mqtt_request_cb, arg, 1);
-        mqtt_sub_unsub(client, "sensor/arm", 0, mqtt_request_cb, arg, 1);
-        mqtt_sub_unsub(client, "sensor/disarm", 0, mqtt_request_cb, arg, 1);
+        char cmd_topic[128];
+        snprintf(cmd_topic, sizeof(cmd_topic), "%s/%s/cmd", SENSOR_ROOT_TOPIC, DEVICE_NAME);
+        mqtt_sub_unsub(mqtt_client->mqtt_client_inst, cmd_topic, MQTT_SUBSCRIBE_QOS, mqtt_request_cb, mqtt_client, 1);
+        // mqtt_sub_unsub(client, "sensor/commands", 0, mqtt_request_cb, arg, 1);
+        // mqtt_sub_unsub(client, "sensor/arm", 0, mqtt_request_cb, arg, 1);
+        // mqtt_sub_unsub(client, "sensor/disarm", 0, mqtt_request_cb, arg, 1);
     } else if (status == MQTT_CONNECT_DISCONNECTED) {
         printf("MQTT disconnected \n");
         mqtt_client->connect_done = false;
@@ -243,6 +247,17 @@ static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t f
     
     mqtt_client->newTopic=true;
  
+    char cmd_topic[128];
+    snprintf(cmd_topic, sizeof(cmd_topic), "%s/%s/cmd", SENSOR_ROOT_TOPIC, DEVICE_NAME);
+    
+    if (strcmp(mqtt_client->topic, cmd_topic) == 0 && g_alarm_ctx) {
+        printf("Command received on topic %s: %s\n", mqtt_client->topic, mqtt_client->data);
+        mqtt_handle_command(mqtt_client, g_alarm_ctx, mqtt_client->data);
+    }
+}
+
+void mqtt_set_alarm_context(alarm_context_t* alarm_ctx) {
+    g_alarm_ctx = alarm_ctx;
 }
 
 static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len) {

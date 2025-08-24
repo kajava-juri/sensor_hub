@@ -78,6 +78,7 @@ add_executable(sensor_hub
         src/mqtt.c
         src/sensor.c
         src/buttons.c
+        src/mqtt_cmd.c
         )
 # pull in common dependencies and additional i2c hardware support
 target_link_libraries(sensor_hub 

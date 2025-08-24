@@ -149,8 +149,8 @@ bool exit_delay_callback(struct repeating_timer *rt) {
 bool entry_delay_callback(struct repeating_timer *rt) {
     alarm_context_t *ctx = (alarm_context_t *) rt->user_data;
     if(ctx->current_state == ALARM_STATE_TRIGGERING) {
-        update_alarm_state(ctx, EVENT_TRIGGER);
         printf("Entry delay expired, system about to TRIGGER\n");
+        update_alarm_state(ctx, EVENT_TRIGGER);
     }
     ctx->enter_delay_active = false;
     return false;

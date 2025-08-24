@@ -69,6 +69,7 @@ void sensor_handle_interrupt(sensor_manager_t *manager, uint8_t intf, uint8_t in
                     manager->alarm_ctx->triggered_sensor = sensor;
                     mqtt_flags.last_door_sensor = sensor;
                     mqtt_flags.last_door_state = sensor_state;
+                    mqtt_flags.door_state_changed = true;
 
                     // Update alarm system - only trigger if armed and door opened
                     if (sensor_state && alarm_is_armed(manager->alarm_ctx)) {

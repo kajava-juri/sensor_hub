@@ -8,7 +8,7 @@
 #include "sensor.h"
 #include "common.h"
 
-#define HEARTBEAT_INTERVAL_MS 10000
+#define HEARTBEAT_INTERVAL_MS 30000
 
 // MQTT Configuration
 #define MQTT_BROKER_PORT 8883
@@ -52,7 +52,7 @@ extern mqtt_flags_t mqtt_flags;
 
 MQTT_CLIENT_DATA_T* mqtt_init();
 int mqtt_connect(MQTT_CLIENT_DATA_T* mqtt_ctx, char* broker_ip);
-static void mqtt_request_cb(void *arg, err_t err);
+void mqtt_request_cb(void *arg, err_t err);
 static void mqtt_connection_cb(mqtt_client_t *client, void *arg, mqtt_connection_status_t status);
 static void mqtt_incoming_data_cb(void *arg, const u8_t *data, u16_t len, u8_t flags);
 static void mqtt_incoming_publish_cb(void *arg, const char *topic, u32_t tot_len);
@@ -63,5 +63,11 @@ void mqtt_publish_system_status(MQTT_CLIENT_DATA_T* mqtt_ctx, system_status_t* s
 void mqtt_publish_heartbeat(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_context_t *alarm_ctx);
 void mqtt_check_and_publish(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* alarm_ctx);
 void mqtt_handle_reconnection(MQTT_CLIENT_DATA_T *mqtt_ctx);
+void mqtt_set_alarm_context(alarm_context_t* alarm_ctx);
+
+// Command handling functions
+void mqtt_handle_command(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* alarm_ctx, const char* command_json);
+void mqtt_publish_command_response(MQTT_CLIENT_DATA_T* mqtt_ctx, const char* status, const char* message, const char* command);
+void mqtt_publish_status_response(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* alarm_ctx);
 
 #endif // MQTT_H
