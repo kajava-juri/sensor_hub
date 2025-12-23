@@ -63,16 +63,23 @@ int mcp23018_read8(uint8_t reg, uint8_t *data) {
     int res;
     
     //printf("DEBUG: Writing register 0x%02x to device 0x%02x\n", reg, EXPANDER_ADDR);
-    res = i2c_write_blocking(i2c_default, EXPANDER_ADDR, &reg, 1, true);  // true = keep control
+    // Use explicit timeout - 10ms should be more than enough for I2C at 50kHz
+    res = i2c_write_timeout_us(i2c_default, EXPANDER_ADDR, &reg, 1, true, 10000);  // 10ms timeout
     //printf("DEBUG: Write result: %d\n", res);
-    if (res < 1) return res;
-
-    sleep_us(50);
+    if (res < 1) {
+        printf("DEBUG: Write error code: %d\n", res);
+        return res;
+    }
 
     //printf("DEBUG: Reading from device 0x%02x, register 0x%02x\n", EXPANDER_ADDR, reg);
-    res = i2c_read_blocking(i2c_default, EXPANDER_ADDR, data, 1, false);
+    // Use explicit timeout - 10ms should be more than enough
+    res = i2c_read_timeout_us(i2c_default, EXPANDER_ADDR, data, 1, false, 10000);  // 10ms timeout
     //printf("DEBUG: Read result: %d, data: 0x%02x\n", res, *data);
-
+    
+    if (res < 1) {
+        printf("DEBUG: Read error code: %d\n", res);
+    }
+    
     return res;
 }
 

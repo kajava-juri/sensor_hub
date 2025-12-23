@@ -20,7 +20,7 @@ sensor_manager_t* sensor_manager_init(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_contex
         .name = "Front Door",              // Now only 16 chars max
         .computer_name = "front_door",     // Added computer-readable name
         .active = true,
-        .invert_logic = false,
+        .invert_logic = true,
         .debounce_ms = 0,                  // Now uint16_t
         .last_event_time = 0
     };

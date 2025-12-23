@@ -28,6 +28,7 @@
 
 #define MQTT_FULL_TOPIC_HEARTBEAT SENSOR_ROOT_TOPIC "/" DEVICE_NAME "/" MQTT_TOPIC_HEARTBEAT
 #define MQTT_FULL_TOPIC_COMMAND SENSOR_ROOT_TOPIC "/" DEVICE_NAME "/" MQTT_TOPIC_COMMAND
+#define MQTT_FULL_TOPIC_ERROR SENSOR_ROOT_TOPIC "/" DEVICE_NAME "/error"
 
 typedef struct {
     const char *wifi_status;
@@ -61,6 +62,7 @@ void dns_found(const char *hostname, const ip_addr_t *ipaddr, void *arg);
 bool mqtt_is_connected(MQTT_CLIENT_DATA_T* mqtt_ctx);
 void mqtt_publish_system_status(MQTT_CLIENT_DATA_T* mqtt_ctx, system_status_t* status, alarm_context_t *alarm_ctx);
 void mqtt_publish_heartbeat(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_context_t *alarm_ctx);
+void mqtt_publish_error(MQTT_CLIENT_DATA_T *mqtt_ctx, const char *error_message);
 void mqtt_check_and_publish(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* alarm_ctx);
 void mqtt_handle_reconnection(MQTT_CLIENT_DATA_T *mqtt_ctx);
 void mqtt_set_alarm_context(alarm_context_t* alarm_ctx);

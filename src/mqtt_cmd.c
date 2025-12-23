@@ -89,6 +89,9 @@ void mqtt_handle_command(MQTT_CLIENT_DATA_T* mqtt_ctx, alarm_context_t* alarm_ct
         } else if (alarm_ctx->current_state == ALARM_STATE_ARMED) {
             mqtt_publish_command_response(mqtt_ctx, "warning", "System already armed", command);
             printf("ARM command ignored - system already armed\n");
+        } else if (alarm_ctx->current_state == ALARM_STATE_TRIGGERED) {
+            mqtt_publish_command_response(mqtt_ctx, "error", "Cannot arm - system triggered", command);
+            printf("ARM command failed - system is triggered\n");
         } else {
             mqtt_publish_command_response(mqtt_ctx, "error", "Cannot arm - system in invalid state", command);
             printf("ARM command failed - current state: %s\n", alarm_state_to_string(alarm_ctx->current_state));

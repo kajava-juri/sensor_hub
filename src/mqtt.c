@@ -317,6 +317,33 @@ void mqtt_publish_heartbeat(MQTT_CLIENT_DATA_T *mqtt_ctx, alarm_context_t *alarm
     }
 }
 
+void mqtt_publish_error(MQTT_CLIENT_DATA_T *mqtt_ctx, const char *error_message)
+{
+    if (!mqtt_is_connected(mqtt_ctx)) {
+        printf("Cannot publish error - MQTT not connected\n");
+        return;
+    }
+
+    // MQTT_FULL_TOPIC_ERROR
+    char topic[128];
+    snprintf(topic, sizeof(topic), MQTT_FULL_TOPIC_ERROR);
+
+    char message[256];
+    snprintf(message, sizeof(message),
+        "{"
+        "\"error\":\"%s\","
+        "\"timestamp\":%lu"
+        "}",
+        error_message,
+        to_ms_since_boot(get_absolute_time())
+    );
+
+    err_t err = mqtt_publish(mqtt_ctx->mqtt_client_inst, topic, (const u8_t *)message, strlen(message), MQTT_PUBLISH_QOS, MQTT_PUBLISH_RETAIN, mqtt_request_cb, mqtt_ctx);
+    if (err != ERR_OK) {
+        printf("Failed to publish error message: %d\n", err);
+    }
+}
+
 void mqtt_publish_system_status(MQTT_CLIENT_DATA_T* mqtt_ctx, system_status_t* status, alarm_context_t *alarm_ctx) {
     if (!mqtt_is_connected(mqtt_ctx)) return;
     

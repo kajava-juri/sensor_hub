@@ -16,15 +16,22 @@ Reasoning for this is to stop compiling if environmental variables are not prepa
 3. run `source ./.env.sh`
 4. generate build files with the environmental files `cd build && cmake ..`
 
+This will generate the build files with the environmental variables set. Now you compile the project with ninja or using the 'Compile Project' task in VSCode Raspberry Pi extension.
+
 ## Hardware Requirements
 
 - Raspberry Pi Pico W
 - MCP23018 I2C GPIO expander
 - Sensors that send a digital signal once triggered
 
-## Wiring?
+## Wiring
 
-TODO: Document the wiring connections for the MCP23018 and sensors.
+RESET button for the alarm system is connected to raspberry's GPIO pin (default 4), and is active LOW.
+
+All the sensors currently are connected to MCP23018 GPIO expander's port A (GPA0-GPA7). The expander's INTA pin is connected to Raspberry Pi Pico W GPIO pin (default 2) to handle interrupts (also active LOW, configurable with INTPOL, see MCP23018 datasheet).
+
+
+TODO: Update schematic!!!
 
 ![schematic](https://i.imgur.com/MJUmkO6.png)
 
@@ -38,7 +45,7 @@ This project uses the official Raspberry Pi Pico SDK version 2.2.0.
 1. Ensure Pico SDK is installed and configured
 2. Install Paho MQTT C client library
 3. Clone this repository
-4. Create build directory and run the `Compile Project` task
+4. Create build directory and run the `Compile Project` task (environment must be set up or wont compile!)
 
 ## Configuration
 

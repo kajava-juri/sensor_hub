@@ -35,6 +35,7 @@
 #include "buttons.h"
 #include "config_fallback.h"
 #include "common.h"
+#include "mqtt.h"
 
 #define BANK0_IODIRA 0x00
 #define BANK0_IODIRB 0x01
@@ -190,11 +191,15 @@ int main() {
     puts("I2C pins were not defined");
 #else
     // This example will use I2C0 on the default SDA and SCL pins (GP4, GP5 on a Pico)
-    i2c_init(i2c_default, 50 * 1000);
+    // Try 50kHz - RP2350 might have timing issues at 100kHz with this specific MCP23018
+    uint actual_baudrate = i2c_init(i2c_default, 50 * 1000);
+    printf("I2C initialized at %u Hz (requested 50kHz)\n", actual_baudrate);
     gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
-    gpio_pull_up(I2C_SDA_PIN);
-    gpio_pull_up(I2C_SCL_PIN);
+    // IMPORTANT: External pull-ups are installed, so disable internal pull-ups
+    // Having both can cause signal integrity issues and timing violations
+    gpio_disable_pulls(I2C_SDA_PIN);
+    gpio_disable_pulls(I2C_SCL_PIN);
     // Make the I2C pins available to picotool
     bi_decl(bi_2pins_with_func(I2C_SDA_PIN, I2C_SCL_PIN, GPIO_FUNC_I2C));
 
@@ -314,23 +319,41 @@ int main() {
         if (mcp23018_interrupt_pending) {
             mcp23018_interrupt_pending = false;
             // Handle the interrupt from the MCP23018
-            uint8_t intf;
             uint8_t intcap;
-            if (mcp23018_read8(INTFA_BANK1, &intf) == 1) {
-                printf("Interrupt on GPIOA: 0x%02x\n", intf);
-                sleep_ms(10);  // Allow time for the interrupt to settle
-                if (mcp23018_read8(INTCAPA_BANK1, &intcap) == 1) {
-                    printf("Interrupt capture on GPIOA: 0x%02x\n", intcap);
+            printf("Handling MCP23018 interrupt...");
+            
+            // Verify interrupt pin is still low
+            if (gpio_get(INTERRUPT_PIN)) {
+                printf("False interrupt - pin already high\n");
+                continue;
+            }
+            
+            sleep_ms(10);  // Debounce delay
+
+            // TODO: maybe reading INTFA works now after the other fixes?
+            // use the intf mask instead od all active sensors, but since we have only one sensor for now, it's ok for now
+            
+            uint8_t gpio_state;
+            int read_result = mcp23018_read8(GPIOA_BANK1, &gpio_state);
+            if (read_result == 1) {
+                printf("GPIO read: 0x%02x\n", gpio_state);
+                
+                // Now read INTCAP to get the captured state when interrupt occurred
+                read_result = mcp23018_read8(INTCAPA_BANK1, &intcap);
+                if (read_result == 1) {
+                    printf("Interrupt capture: 0x%02x\n", intcap);
                     
-                    // Use the sensor manager to handle the interrupt
-                    sensor_handle_interrupt(sensor_manager, intf, intcap);
+                    sensor_handle_interrupt(sensor_manager, sensor_manager->active_sensor_mask, intcap);
                 } else {
-                    puts("Failed to read interrupt capture");
+                    printf("Failed to read INTCAP (error: %d), using GPIO state\n", read_result);
+                    sensor_handle_interrupt(sensor_manager, sensor_manager->active_sensor_mask, gpio_state);
                 }
             } else {
-                puts("Failed to read interrupt flags");
+                printf("Failed to read GPIO (error: %d) - interrupt may not be cleared!\n", read_result);
+                mqtt_publish_error(mqtt_ctx, "Failed to read MCP23018 GPIO during interrupt handling ()");
             }
         }
+        
 
         current_time = to_ms_since_boot(get_absolute_time());
 
