@@ -33,7 +33,7 @@ All the sensors currently are connected to MCP23018 GPIO expander's port A (GPA0
 
 TODO: Update schematic!!!
 
-![schematic](https://i.imgur.com/MJUmkO6.png)
+![schematic](/sensor_hub_schematic.png)
 
 ## Dependencies
 
