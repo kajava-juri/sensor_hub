@@ -30,5 +30,7 @@ void mcp23018_init(i2c_inst_t *i2c, uint8_t addr);
 void mcp23018_configure_iocon(i2c_inst_t *i2c, uint8_t addr, mcp23018_iocon_t *iocon);
 int mcp23018_read8(uint8_t reg, uint8_t *data);
 int mcp23018_store8(uint8_t reg, uint8_t data);
+void mcp23018_i2c_bus_reset(void);
+void mcp23018_hardware_reset(void);
 
 #endif // MCP23018_H

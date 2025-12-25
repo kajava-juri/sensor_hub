@@ -63,8 +63,7 @@ int mcp23018_read8(uint8_t reg, uint8_t *data) {
     int res;
     
     //printf("DEBUG: Writing register 0x%02x to device 0x%02x\n", reg, EXPANDER_ADDR);
-    // Use explicit timeout - 10ms should be more than enough for I2C at 50kHz
-    res = i2c_write_timeout_us(i2c_default, EXPANDER_ADDR, &reg, 1, true, 10000);  // 10ms timeout
+    res = i2c_write_blocking(i2c_default, EXPANDER_ADDR, &reg, 1, true);  // true = keep control
     //printf("DEBUG: Write result: %d\n", res);
     if (res < 1) {
         printf("DEBUG: Write error code: %d\n", res);
@@ -72,8 +71,7 @@ int mcp23018_read8(uint8_t reg, uint8_t *data) {
     }
 
     //printf("DEBUG: Reading from device 0x%02x, register 0x%02x\n", EXPANDER_ADDR, reg);
-    // Use explicit timeout - 10ms should be more than enough
-    res = i2c_read_timeout_us(i2c_default, EXPANDER_ADDR, data, 1, false, 10000);  // 10ms timeout
+    res = i2c_read_blocking(i2c_default, EXPANDER_ADDR, data, 1, false);
     //printf("DEBUG: Read result: %d, data: 0x%02x\n", res, *data);
     
     if (res < 1) {
@@ -93,4 +91,65 @@ int mcp23018_store8(uint8_t reg, uint8_t data) {
     res = i2c_write_blocking(i2c_default, EXPANDER_ADDR, buf, 2, false);
 
     return res;
+}
+
+// I2C bus reset - sends 9 clock pulses to clear any stuck slaves
+void mcp23018_i2c_bus_reset(void) {
+    printf("Performing I2C bus reset...\n");
+    
+    // Deinitialize I2C to manually control pins
+    i2c_deinit(i2c_default);
+    
+    // Configure SDA and SCL as GPIO outputs
+    gpio_init(I2C_SDA_PIN);
+    gpio_init(I2C_SCL_PIN);
+    gpio_set_dir(I2C_SDA_PIN, GPIO_OUT);
+    gpio_set_dir(I2C_SCL_PIN, GPIO_OUT);
+    
+    // Set both high
+    gpio_put(I2C_SDA_PIN, 1);
+    gpio_put(I2C_SCL_PIN, 1);
+    sleep_us(10);
+    
+    // Send 9 clock pulses to clear any stuck transaction
+    for (int i = 0; i < 9; i++) {
+        gpio_put(I2C_SCL_PIN, 0);
+        sleep_us(5);
+        gpio_put(I2C_SCL_PIN, 1);
+        sleep_us(5);
+    }
+    
+    // Send STOP condition
+    gpio_put(I2C_SDA_PIN, 0);
+    sleep_us(5);
+    gpio_put(I2C_SCL_PIN, 1);
+    sleep_us(5);
+    gpio_put(I2C_SDA_PIN, 1);
+    sleep_us(10);
+    
+    // Reinitialize I2C
+    i2c_init(i2c_default, 100 * 1000);
+    gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
+    gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
+    gpio_disable_pulls(I2C_SDA_PIN);
+    gpio_disable_pulls(I2C_SCL_PIN);
+    
+    printf("I2C bus reset complete\n");
+}
+
+// Hardware reset using RESET pin - much more reliable than I2C bus reset
+void mcp23018_hardware_reset(void) {
+    printf("Performing MCP23018 hardware reset...\n");
+    
+    // Pull RESET LOW for at least 1µs (we'll do 10µs to be safe)
+    gpio_put(MCP23018_RESET_PIN, 0);
+    sleep_us(20);
+    
+    // Release RESET (pull HIGH)
+    gpio_put(MCP23018_RESET_PIN, 1);
+    
+    // Wait for chip to complete reset and be ready (typical 5µs, we'll wait 1ms)
+    sleep_ms(1);
+    
+    printf("MCP23018 hardware reset complete\n");
 }

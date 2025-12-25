@@ -8,6 +8,9 @@
 
 #define I2C_SDA_PIN 16
 #define I2C_SCL_PIN 17
+#define MCP23018_RESET_PIN 19
+
+#define I2C_BUS_FREQUENCY_khz 50  // kHz
 
 #define IOCON_BANK0 0x0A
 #define IOCON_BANK1 0x05

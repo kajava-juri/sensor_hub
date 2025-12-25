@@ -152,6 +152,16 @@ int main() {
         return -1;
     }
 
+    alarm_context_t *alarm_ctx = alarm_init();
+
+    // Initialize LED blink timer
+    add_repeating_timer_ms(250, led_blink_callback, alarm_ctx, &led_timer);
+    printf("LED blink timer initialized\n");
+    
+    // turn LED to indicating code is running
+    cyw43_arch_gpio_put(CYW43_WL_GPIO_LED_PIN, 1);
+    led_blink_enabled = true;
+    
     MQTT_CLIENT_DATA_T* mqtt_ctx = mqtt_init();
     if (!mqtt_ctx) {
         printf("mqtt client instant ini error\n");
@@ -182,18 +192,18 @@ int main() {
     
     printf("MQTT connection initiated, waiting for callback...\n");
     
+    // Initialize interrupt pin but DON'T enable interrupt yet
+    // Must configure MCP23018 first to avoid spurious interrupts during init
     gpio_init(INTERRUPT_PIN);
     gpio_set_dir(INTERRUPT_PIN, GPIO_IN);
     gpio_pull_up(INTERRUPT_PIN);  // Pull up since INTA is open-drain, active low
-    gpio_set_irq_enabled_with_callback(INTERRUPT_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
 #if !defined(i2c_default) || !defined(I2C_SDA_PIN) || !defined(I2C_SCL_PIN)
 #warning i2c/bus_scan example requires a board with I2C pins
     puts("I2C pins were not defined");
 #else
-    // This example will use I2C0 on the default SDA and SCL pins (GP4, GP5 on a Pico)
-    // Try 50kHz - RP2350 might have timing issues at 100kHz with this specific MCP23018
-    uint actual_baudrate = i2c_init(i2c_default, 50 * 1000);
-    printf("I2C initialized at %u Hz (requested 50kHz)\n", actual_baudrate);
+
+    uint actual_baudrate = i2c_init(i2c_default, I2C_BUS_FREQUENCY_khz * 1000);  // Try 50kHz
+    printf("I2C initialized at %u Hz (requested 50kHz for RP2350 compatibility)\n", actual_baudrate);
     gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
     // IMPORTANT: External pull-ups are installed, so disable internal pull-ups
@@ -203,16 +213,17 @@ int main() {
     // Make the I2C pins available to picotool
     bi_decl(bi_2pins_with_func(I2C_SDA_PIN, I2C_SCL_PIN, GPIO_FUNC_I2C));
 
-    alarm_context_t *alarm_ctx = alarm_init();
+    // Initialize MCP23018 RESET pin - keep HIGH for normal operation
+    gpio_init(MCP23018_RESET_PIN);
+    gpio_set_dir(MCP23018_RESET_PIN, GPIO_OUT);
+    gpio_put(MCP23018_RESET_PIN, 1);  // HIGH = normal operation (active LOW reset)
+    printf("MCP23018 RESET pin initialized on GP%d\n", MCP23018_RESET_PIN);
+
     mqtt_set_alarm_context(alarm_ctx);
 
     // Initialize button manager
     button_manager_t button_manager;
     buttons_init(&button_manager, alarm_ctx);
-
-    // Initialize LED blink timer (500ms interval for alarm blink)
-    add_repeating_timer_ms(250, led_blink_callback, alarm_ctx, &led_timer);
-    printf("LED blink timer initialized\n");
     
     // Configure sensors with reduced memory footprint
     sensor_manager_t *sensor_manager = sensor_manager_init(mqtt_ctx, alarm_ctx);
@@ -222,6 +233,11 @@ int main() {
     }
 
     sleep_ms(100);  // Allow time for I2C to stabilize
+
+    // Reset MCP23018 hardware to ensure clean state
+    // Can be removed, but during testing it caused previous states to carry over
+    // anyhow, the sensor hub is planned to be running 24/7
+    mcp23018_hardware_reset();
 
     puts("===========================\nQuick device check...");
     uint8_t test_byte;
@@ -309,6 +325,10 @@ int main() {
         }
     }
 
+    // Now that MCP23018 is fully configured, enable interrupt handling
+    gpio_set_irq_enabled_with_callback(INTERRUPT_PIN, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+    printf("MCP23018 interrupt handler enabled on GP%d\n", INTERRUPT_PIN);
+
     // Initialize rate limiter variables
     uint32_t last_print_time = 0;
     uint32_t current_time = 0;
@@ -320,6 +340,7 @@ int main() {
             mcp23018_interrupt_pending = false;
             // Handle the interrupt from the MCP23018
             uint8_t intcap;
+            uint8_t intf;
             printf("Handling MCP23018 interrupt...");
             
             // Verify interrupt pin is still low
@@ -328,29 +349,31 @@ int main() {
                 continue;
             }
             
-            sleep_ms(10);  // Debounce delay
-
-            // TODO: maybe reading INTFA works now after the other fixes?
-            // use the intf mask instead od all active sensors, but since we have only one sensor for now, it's ok for now
+            // CRITICAL: RP2350 Issue with MCP23018
+            // Reading ANY register (including INTFA) while interrupt pin is asserted 
+            // causes NACK on next transaction
+            // MUST read INTCAPA first to clear interrupt before MCP23018 responds properly
+            // This has been debugged and no root cause found in MCP23018 or RP2350 docs, 
+            // people on forums also reported random issues with MCP23017 on raspberry pi
             
-            uint8_t gpio_state;
-            int read_result = mcp23018_read8(GPIOA_BANK1, &gpio_state);
+            sleep_ms(10);  // Debounce delay
+            
+            // Read INTCAPA first - this clears the interrupt and makes MCP23018 responsive
+            // Reading INTCAPA also clears INTF, so we use active_sensor_mask to know which sensors
+            int read_result = mcp23018_read8(INTCAPA_BANK1, &intcap);
             if (read_result == 1) {
-                printf("GPIO read: 0x%02x\n", gpio_state);
+                printf("Interrupt capture: 0x%02x (interrupt cleared)\n", intcap);
                 
-                // Now read INTCAP to get the captured state when interrupt occurred
-                read_result = mcp23018_read8(INTCAPA_BANK1, &intcap);
-                if (read_result == 1) {
-                    printf("Interrupt capture: 0x%02x\n", intcap);
-                    
-                    sensor_handle_interrupt(sensor_manager, sensor_manager->active_sensor_mask, intcap);
-                } else {
-                    printf("Failed to read INTCAP (error: %d), using GPIO state\n", read_result);
-                    sensor_handle_interrupt(sensor_manager, sensor_manager->active_sensor_mask, gpio_state);
-                }
+                // Use active_sensor_mask since INTF is cleared when INTCAP is read
+                // This works because we control which pins have interrupts enabled via GPINTENA
+                intf = sensor_manager->active_sensor_mask;
+                printf("Active sensor mask: 0x%02x\n", intf);
+                
+                sensor_handle_interrupt(sensor_manager, intf, intcap);
             } else {
-                printf("Failed to read GPIO (error: %d) - interrupt may not be cleared!\n", read_result);
-                mqtt_publish_error(mqtt_ctx, "Failed to read MCP23018 GPIO during interrupt handling ()");
+                printf("Failed to read INTCAP (error: %d) - MCP23018 I2C lockup detected\n", read_result);
+                printf("Performing hardware reset to recover...\n");
+                mcp23018_hardware_reset();
             }
         }
         
@@ -358,12 +381,6 @@ int main() {
         current_time = to_ms_since_boot(get_absolute_time());
 
         if (current_time - last_print_time >= 6000) {
-            // if (mcp23018_read8(GPIOA, &data) != 1) {
-            //     if (current_time - last_print_time >= 1000) {
-            //         puts("Failed to read GPIOA");
-            //         last_print_time = current_time;
-            //     }
-            // }
             printf("Alarm state: %s; MQTT: %s; Interrupt pin: %d\n", 
                 alarm_state_to_string(alarm_ctx->current_state),
                 mqtt_is_connected(mqtt_ctx) ? "connected" : "disconnected",
