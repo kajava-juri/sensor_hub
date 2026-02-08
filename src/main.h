@@ -4,11 +4,12 @@
 #define DEVICE_NAME "pico_w_1"
 
 #define EXPANDER_ADDR 0x20
-#define INTERRUPT_PIN 2
+#define INTERRUPT_PIN 27
 
-#define I2C_SDA_PIN 16
-#define I2C_SCL_PIN 17
-#define MCP23018_RESET_PIN 19
+#define I2C_INSTANCE i2c1
+#define I2C_SDA_PIN 18
+#define I2C_SCL_PIN 19
+#define MCP23018_RESET_PIN 21
 
 #define I2C_BUS_FREQUENCY_khz 50  // kHz
 

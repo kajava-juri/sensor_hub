@@ -20,6 +20,7 @@
 // E.g. if addresses 0x12 and 0x34 were acknowledged.
 
 #include <stdio.h>
+#include <stdint.h>
 #include "pico/stdlib.h"
 #include "pico/binary_info.h"
 #include "hardware/i2c.h"
@@ -135,7 +136,7 @@ void bus_scan() {
         if (reserved_addr(addr))
             ret = PICO_ERROR_GENERIC;
         else
-            ret = i2c_read_blocking(i2c_default, addr, &rxdata, 1, false);
+            ret = i2c_read_timeout_us(I2C_INSTANCE, addr, &rxdata, 1, false, 10000); // 10ms timeout
 
         printf(ret < 0 ? "." : "@");
         printf(addr % 16 == 15 ? "\n" : "  ");
@@ -197,19 +198,19 @@ int main() {
     gpio_init(INTERRUPT_PIN);
     gpio_set_dir(INTERRUPT_PIN, GPIO_IN);
     gpio_pull_up(INTERRUPT_PIN);  // Pull up since INTA is open-drain, active low
-#if !defined(i2c_default) || !defined(I2C_SDA_PIN) || !defined(I2C_SCL_PIN)
+#if !defined(I2C_INSTANCE) || !defined(I2C_SDA_PIN) || !defined(I2C_SCL_PIN)
 #warning i2c/bus_scan example requires a board with I2C pins
     puts("I2C pins were not defined");
 #else
 
-    uint actual_baudrate = i2c_init(i2c_default, I2C_BUS_FREQUENCY_khz * 1000);  // Try 50kHz
+    uint actual_baudrate = i2c_init(I2C_INSTANCE, I2C_BUS_FREQUENCY_khz * 1000);  // Try 50kHz
     printf("I2C initialized at %u Hz (requested 50kHz for RP2350 compatibility)\n", actual_baudrate);
     gpio_set_function(I2C_SDA_PIN, GPIO_FUNC_I2C);
     gpio_set_function(I2C_SCL_PIN, GPIO_FUNC_I2C);
     // IMPORTANT: External pull-ups are installed, so disable internal pull-ups
     // Having both can cause signal integrity issues and timing violations
-    gpio_disable_pulls(I2C_SDA_PIN);
-    gpio_disable_pulls(I2C_SCL_PIN);
+    gpio_pull_up(I2C_SDA_PIN);
+    gpio_pull_up(I2C_SCL_PIN);
     // Make the I2C pins available to picotool
     bi_decl(bi_2pins_with_func(I2C_SDA_PIN, I2C_SCL_PIN, GPIO_FUNC_I2C));
 
@@ -237,15 +238,16 @@ int main() {
     // Reset MCP23018 hardware to ensure clean state
     // Can be removed, but during testing it caused previous states to carry over
     // anyhow, the sensor hub is planned to be running 24/7
-    mcp23018_hardware_reset();
+    // mcp23018_hardware_reset();
 
     puts("===========================\nQuick device check...");
+    bus_scan();
     uint8_t test_byte;
     int result;
     int max_attempts = 5;
     int attempts_count = max_attempts;
     while(attempts_count--) {
-        result = i2c_read_blocking(i2c_default, EXPANDER_ADDR, &test_byte, 1, false);
+        result = i2c_read_blocking(I2C_INSTANCE, EXPANDER_ADDR, &test_byte, 1, false);
         if (result < 0) {
             printf("ERROR: MCP23018 not responding at expected address! %02x\n", EXPANDER_ADDR);
             if(attempts_count % max_attempts == 0) bus_scan();
@@ -274,7 +276,7 @@ int main() {
         .MIRROR = 0,
         .BANK = 1
     };
-    mcp23018_configure_iocon(i2c_default, EXPANDER_ADDR, &iocon);
+    mcp23018_configure_iocon(I2C_INSTANCE, EXPANDER_ADDR, &iocon);
     //mcp23018_store8(IOCON_BANK0, 0xa0);
     mcp23018_store8(IODIRA, sensor_manager->active_sensor_mask);  // Set all pins as inputs except GP0
 
